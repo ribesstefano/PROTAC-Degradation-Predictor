@@ -163,3 +163,5 @@ cython_debug/
 # Custom files
 
 data/uniprot2embedding.h5
+logs/
+notebooks/per-protein*

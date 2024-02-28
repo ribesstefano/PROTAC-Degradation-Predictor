@@ -163,5 +163,7 @@ cython_debug/
 # Custom files
 
 data/uniprot2embedding.h5
+data/PROTAC-DB.csv
+data/PROTAC-Pedia.csv
 logs/
 notebooks/per-protein*

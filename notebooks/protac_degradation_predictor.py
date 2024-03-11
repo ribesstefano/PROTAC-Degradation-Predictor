@@ -707,7 +707,7 @@ def train_model(
         learning_rate=2e-5,
         max_epochs=50,
         smiles_emb_dim=1024,
-        smote_n_neighbors=5,
+        smote_k_neighbors=5,
         use_ored_activity=False if active_col == 'Active' else True,
         fast_dev_run=False,
         disabled_embeddings=[],
@@ -723,7 +723,7 @@ def train_model(
         learning_rate (float): The learning rate.
         max_epochs (int): The maximum number of epochs.
         smiles_emb_dim (int): The dimension of the SMILES embeddings.
-        smote_n_neighbors (int): The number of neighbors for the SMOTE oversampler.
+        smote_k_neighbors (int): The number of neighbors for the SMOTE oversampler.
         use_ored_activity (bool): Whether to use the ORED activity column.
         fast_dev_run (bool): Whether to run a fast development run.
         disabled_embeddings (list): The list of disabled embeddings.
@@ -731,7 +731,7 @@ def train_model(
     Returns:
         tuple: The trained model, the trainer, and the metrics.
     """
-    oversampler = SMOTE(k_neighbors=smote_n_neighbors, random_state=42)
+    oversampler = SMOTE(k_neighbors=smote_k_neighbors, random_state=42)
     train_ds = PROTAC_Dataset(
         train_df,
         protein_embeddings,
@@ -821,6 +821,7 @@ def objective(
         batch_size_options,
         learning_rate_options,
         max_epochs_options,
+        smote_k_neighbors_options,
         fast_dev_run=False,
 ) -> float:
     # Generate the hyperparameters
@@ -828,6 +829,7 @@ def objective(
     batch_size = trial.suggest_categorical('batch_size', batch_size_options)
     learning_rate = trial.suggest_loguniform('learning_rate', *learning_rate_options)
     max_epochs = trial.suggest_categorical('max_epochs', max_epochs_options)
+    smote_k_neighbors = trial.suggest_categorical('smote_k_neighbors', smote_k_neighbors_options)
 
     # Train the model with the current set of hyperparameters
     _, _, metrics = train_model(
@@ -837,6 +839,7 @@ def objective(
         batch_size=batch_size,
         learning_rate=learning_rate,
         max_epochs=max_epochs,
+        smote_k_neighbors=smote_k_neighbors,
         fast_dev_run=fast_dev_run,
     )
 
@@ -872,6 +875,7 @@ def hyperparameter_tuning_and_training(
     batch_size_options = [8, 16, 32]
     learning_rate_options = (1e-5, 1e-3) # min and max values for loguniform distribution
     max_epochs_options = [10, 20, 50]
+    smote_k_neighbors_options = list(range(3, 16))
 
     # Create an Optuna study object
     study = optuna.create_study(direction='minimize')
@@ -883,6 +887,7 @@ def hyperparameter_tuning_and_training(
             batch_size_options,
             learning_rate_options,
             max_epochs_options,
+            smote_k_neighbors_options=smote_k_neighbors_options,
             fast_dev_run=fast_dev_run,),
         n_trials=n_trials,
     )
@@ -893,6 +898,7 @@ def hyperparameter_tuning_and_training(
     best_batch_size = best_params['batch_size']
     best_learning_rate = best_params['learning_rate']
     best_max_epochs = best_params['max_epochs']
+    best_smote_k_neighbors = best_params['smote_k_neighbors']
 
     # Retrain the model with the best hyperparameters
     model, trainer, metrics = train_model(
@@ -905,6 +911,13 @@ def hyperparameter_tuning_and_training(
         max_epochs=best_max_epochs,
         fast_dev_run=fast_dev_run,
     )
+
+    # Report the best hyperparameters found
+    metrics['hidden_dim'] = best_hidden_dim
+    metrics['batch_size'] = best_batch_size
+    metrics['learning_rate'] = best_learning_rate
+    metrics['max_epochs'] = best_max_epochs
+    metrics['smote_k_neighbors'] = best_smote_k_neighbors
 
     # Return the best metrics
     return model, trainer, metrics

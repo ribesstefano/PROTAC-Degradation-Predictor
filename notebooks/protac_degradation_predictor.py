@@ -2,6 +2,8 @@ import optuna
 import pandas as pd
 from rdkit import Chem
 from rdkit.Chem import AllChem
+from rdkit import DataStructs
+from collections import defaultdict
 
 import h5py
 import numpy as np
@@ -113,19 +115,16 @@ for cell_line in protac_df['Cell Line Identifier'].unique():
 
 # ## Precompute Molecular Fingerprints
         
-morgan_radius = 15
-n_bits = 1024
-
-# fpgen = AllChem.GetAtomPairGenerator()
-# rdkit_fpgen = AllChem.GetRDKitFPGenerator(maxPath=5, fpSize=512)
-morgan_fpgen = AllChem.GetMorganGenerator(radius=morgan_radius, fpSize=n_bits)
+morgan_fpgen = AllChem.GetMorganGenerator(
+    radius=15,
+    fpSize=1024,
+    includeChirality=True,
+)
 
 smiles2fp = {}
 for smiles in tqdm(protac_df['Smiles'].unique().tolist(), desc='Precomputing fingerprints'):
     # Get the fingerprint as a bit vector
     morgan_fp = morgan_fpgen.GetFingerprint(Chem.MolFromSmiles(smiles))
-    # rdkit_fp = rdkit_fpgen.GetFingerprint(Chem.MolFromSmiles(smiles))
-    # fp = np.concatenate([morgan_fp, rdkit_fp])
     smiles2fp[smiles] = morgan_fp
 
 # Count the number of unique SMILES and the number of unique Morgan fingerprints
@@ -143,8 +142,6 @@ print(f'Number of SMILES with overlapping fingerprints: {len(overlapping_smiles)
 print(f'Number of overlapping SMILES in protac_df: {len(protac_df[protac_df["Smiles"].isin(overlapping_smiles)])}')
 
 # Get the pair-wise tanimoto similarity between the PROTAC fingerprints
-from rdkit import DataStructs
-from collections import defaultdict
 
 tanimoto_matrix = defaultdict(list)
 for i, smiles1 in enumerate(tqdm(protac_df['Smiles'].unique(), desc='Computing Tanimoto similarity')):
@@ -656,6 +653,8 @@ def train_model(
         smote_k_neighbors=5,
         use_ored_activity=False if active_col == 'Active' else True,
         fast_dev_run=False,
+        use_logger=True,
+        logger_name='protac',
         disabled_embeddings=[],
 ) -> tuple:
     """ Train a PROTAC model using the given datasets and hyperparameters.
@@ -704,7 +703,7 @@ def train_model(
         )
     logger = pl.loggers.TensorBoardLogger(
         save_dir='../logs',
-        name='protac',
+        name=logger_name,
     )
     callbacks = [
         pl.callbacks.EarlyStopping(
@@ -722,12 +721,13 @@ def train_model(
     ]
     # Define Trainer
     trainer = pl.Trainer(
-        logger=logger,
+        logger=logger if use_logger else False,
         callbacks=callbacks,
         max_epochs=max_epochs,
         fast_dev_run=fast_dev_run,
         enable_model_summary=False,
         enable_checkpointing=False,
+        enable_progress_bar=False,
     )
     model = PROTAC_Model(
         hidden_dim=hidden_dim,
@@ -780,6 +780,7 @@ def objective(
         learning_rate=learning_rate,
         max_epochs=max_epochs,
         smote_k_neighbors=smote_k_neighbors,
+        use_logger=False,
         fast_dev_run=fast_dev_run,
     )
 
@@ -798,6 +799,7 @@ def hyperparameter_tuning_and_training(
         test_df,
         fast_dev_run=False,
         n_trials=20,
+        logger_name='protac_hparam_search',
 ) -> tuple:
     """ Hyperparameter tuning and training of a PROTAC model.
     
@@ -849,6 +851,8 @@ def hyperparameter_tuning_and_training(
         batch_size=best_batch_size,
         learning_rate=best_learning_rate,
         max_epochs=best_max_epochs,
+        use_logger=True,
+        logger_name=logger_name,
         fast_dev_run=fast_dev_run,
     )
 
@@ -927,6 +931,7 @@ for group_type in ['random', 'uniprot', 'tanimoto']:
             test_df,
             fast_dev_run=False,
             n_trials=50,
+            logger_name=f'protac_{group_type}_fold_{k}',
         )
         stats.update(metrics)
         del model

@@ -1,47 +1,75 @@
-# %% [markdown]
-# # PROTAC-Degradation-Predictor
-
-# %%
+import optuna
 import pandas as pd
+from rdkit import Chem
+from rdkit.Chem import AllChem
+
+import h5py
+import numpy as np
+from tqdm.auto import tqdm
+
+import os
+import urllib.request
+
+from sklearn.preprocessing import StandardScaler
+
+# ## Define Torch Dataset
+
+from imblearn.over_sampling import SMOTE, ADASYN
+from sklearn.preprocessing import LabelEncoder
+import pandas as pd
+import numpy as np
+
+from torch.utils.data import Dataset, DataLoader
+
+import warnings
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+import pytorch_lightning as pl
+from torchmetrics import (
+    Accuracy,
+    AUROC,
+    Precision,
+    Recall,
+    F1Score,
+)
+from torchmetrics import MetricCollection
+
+import pickle
+
+from sklearn.model_selection import (
+    StratifiedKFold,
+    StratifiedGroupKFold,
+)
+from sklearn.preprocessing import OrdinalEncoder
+
 
 protac_df = pd.read_csv('../data/PROTAC-Degradation-DB.csv')
 protac_df.head()
 
-# %%
 # Get the unique Article IDs of the entries with NaN values in the Active column
 nan_active = protac_df[protac_df['Active'].isna()]['Article DOI'].unique()
 nan_active
 
-# %%
 # Map E3 Ligase Iap to IAP
 protac_df['E3 Ligase'] = protac_df['E3 Ligase'].str.replace('Iap', 'IAP')
 
-# %%
-protac_df.columns
-
-# %%
 cells = sorted(protac_df['Cell Type'].dropna().unique().tolist())
 print(f'Number of non-cleaned cell lines: {len(cells)}')
 
-# %%
 cells = sorted(protac_df['Cell Line Identifier'].dropna().unique().tolist())
 print(f'Number of cleaned cell lines: {len(cells)}')
 
-# %%
 unlabeled_df = protac_df[protac_df['Active'].isna()]
 print(f'Number of compounds in test set: {len(unlabeled_df)}')
 
-# %% [markdown]
 # ## Load Protein Embeddings
 
-# %% [markdown]
 # Protein embeddings downloaded from [Uniprot](https://www.uniprot.org/help/embeddings).
 # 
 # Please note that running the following cell the first time might take a while.
 
-# %%
-import os
-import urllib.request
 
 download_link = "https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/embeddings/UP000005640_9606/per-protein.h5"
 embeddings_path = "../data/uniprot2embedding.h5"
@@ -49,11 +77,6 @@ if not os.path.exists(embeddings_path):
     # Download the file
     print(f'Downloading embeddings from {download_link}')
     urllib.request.urlretrieve(download_link, embeddings_path)
-
-# %%
-import h5py
-import numpy as np
-from tqdm.auto import tqdm
 
 protein_embeddings = {}
 with h5py.File("../data/uniprot2embedding.h5", "r") as file:
@@ -74,37 +97,27 @@ with h5py.File("../data/uniprot2embedding.h5", "r") as file:
             print(f'KeyError for {sequence_id}')
             protein_embeddings[sequence_id] = np.zeros((1024,))
 
-# %% [markdown]
 # ## Load Cell Embeddings
 
-# %%
-import pickle
 
 cell2embedding_filepath = '../data/cell2embedding.pkl'
 with open(cell2embedding_filepath, 'rb') as f:
     cell2embedding = pickle.load(f)
 print(f'Loaded {len(cell2embedding)} cell lines')
 
-# %%
 emb_shape = cell2embedding[list(cell2embedding.keys())[0]].shape
 # Assign all-zero vectors to cell lines that are not in the embedding file
 for cell_line in protac_df['Cell Line Identifier'].unique():
     if cell_line not in cell2embedding:
         cell2embedding[cell_line] = np.zeros(emb_shape)
 
-# %% [markdown]
 # ## Precompute Molecular Fingerprints
-
-# %%
-from rdkit import Chem
-from rdkit.Chem import AllChem
-from rdkit.Chem import Draw
-
+        
 morgan_radius = 15
 n_bits = 1024
 
 # fpgen = AllChem.GetAtomPairGenerator()
-rdkit_fpgen = AllChem.GetRDKitFPGenerator(maxPath=5, fpSize=512)
+# rdkit_fpgen = AllChem.GetRDKitFPGenerator(maxPath=5, fpSize=512)
 morgan_fpgen = AllChem.GetMorganGenerator(radius=morgan_radius, fpSize=n_bits)
 
 smiles2fp = {}
@@ -129,7 +142,6 @@ for smiles, fp in smiles2fp.items():
 print(f'Number of SMILES with overlapping fingerprints: {len(overlapping_smiles)}')
 print(f'Number of overlapping SMILES in protac_df: {len(protac_df[protac_df["Smiles"].isin(overlapping_smiles)])}')
 
-# %%
 # Get the pair-wise tanimoto similarity between the PROTAC fingerprints
 from rdkit import DataStructs
 from collections import defaultdict
@@ -147,42 +159,12 @@ for i, smiles1 in enumerate(tqdm(protac_df['Smiles'].unique(), desc='Computing T
 avg_tanimoto = {k: np.mean(v) for k, v in tanimoto_matrix.items()}
 protac_df['Avg Tanimoto'] = protac_df['Smiles'].map(avg_tanimoto)
 
-# %%
-# # Plot the distribution of the average Tanimoto similarity
-# import seaborn as sns
-# import matplotlib.pyplot as plt
-
-# sns.histplot(protac_df['Avg Tanimoto'], bins=50)
-# plt.xlabel('Average Tanimoto similarity')
-# plt.ylabel('Count')
-# plt.title('Distribution of average Tanimoto similarity')
-# plt.grid(axis='y', alpha=0.5)
-# plt.show()
-
-# %%
 smiles2fp = {s: np.array(fp) for s, fp in smiles2fp.items()}
 
-# %% [markdown]
 # ## Set the Column to Predict
 
-# %%
 # active_col = 'Active'
 active_col = 'Active - OR'
-
-
-from sklearn.preprocessing import StandardScaler
-
-# %% [markdown]
-# ## Define Torch Dataset
-
-# %%
-from imblearn.over_sampling import SMOTE, ADASYN
-from sklearn.preprocessing import LabelEncoder
-import pandas as pd
-import numpy as np
-
-# %%
-from torch.utils.data import Dataset, DataLoader
 
 
 class PROTAC_Dataset(Dataset):
@@ -294,22 +276,6 @@ class PROTAC_Dataset(Dataset):
                 'active': 1. if self.data[self.active_label].iloc[idx] else 0.,
             }
         return elem
-
-# %%
-import warnings
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-import pytorch_lightning as pl
-from torchmetrics import (
-    Accuracy,
-    AUROC,
-    Precision,
-    Recall,
-    F1Score,
-)
-from torchmetrics import MetricCollection
 
 # Ignore UserWarning from PyTorch Lightning
 warnings.filterwarnings("ignore", ".*does not have many workers.*")
@@ -505,22 +471,17 @@ class PROTAC_Model(pl.LightningModule):
             shuffle=False,
         )
 
-# %% [markdown]
 # ## Test Sets
 
-# %% [markdown]
 # We want a different test set per Cross-Validation (CV) experiment (see further down). We are interested in three scenarios:
 # * Randomly splitting the data into training and test sets. Hence, the test st shall contain unique SMILES and Uniprots
 # * Splitting the data according to their Uniprot. Hence, the test set shall contain unique Uniprots
 # * Splitting the data according to their SMILES, _i.e._, the test set shall contain unique SMILES
 
-# %%
 test_indeces = {}
 
-# %% [markdown]
 # Isolating the unique SMILES and Uniprots:
 
-# %%
 active_df = protac_df[protac_df[active_col].notna()].copy()
 
 # Get the unique SMILES and Uniprot
@@ -552,10 +513,8 @@ test_indeces['random'] = unique_indices
 # plt.title('Test set Active - OR distribution')
 # plt.show()
 
-# %% [markdown]
 # Isolating the unique Uniprots:
 
-# %%
 active_df = protac_df[protac_df[active_col].notna()].copy()
 
 unique_uniprot = active_df['Uniprot'].value_counts() == 1
@@ -569,13 +528,11 @@ unique_indices = active_df[active_df['Uniprot'].isin(unique_uniprot.index)].inde
 test_indeces['uniprot'] = unique_indices
 print(f'Number of unique indices: {len(unique_indices)} ({len(unique_indices) / len(active_df):.1%})')
 
-# %% [markdown]
 # DEPRECATED: The following results in a too Before starting any training, we isolate a small group of test data. Each element in the test set is selected so that all the following conditions are met:
 # * its SMILES is unique
 # * its POI is unique
 # * its (SMILES, POI) pair is unique
 
-# %%
 active_df = protac_df[protac_df[active_col].notna()]
 
 # Find the samples that:
@@ -598,25 +555,16 @@ test_df = active_df.loc[unique_samples]
 
 warnings.filterwarnings("ignore", ".*FixedLocator*")
 
-# %% [markdown]
 # ## Cross-Validation Training
 
-# %% [markdown]
 # Cross validation training with 5 splits. The split operation is done in three different ways:
 # 
 # * Random split
 # * POI-wise: some POIs never in both splits
 # * Least Tanimoto similarity PROTAC-wise
 
-# %% [markdown]
 # ### Plotting CV Folds 
 
-# %%
-from sklearn.model_selection import (
-    StratifiedKFold,
-    StratifiedGroupKFold,
-)
-from sklearn.preprocessing import OrdinalEncoder
 
 # NOTE: When set to 60, it will result in 29 groups, with nice distributions of
 # the number of unique groups in the train and validation sets, together with
@@ -688,10 +636,8 @@ for group_type in groups:
         stats.append(stat)
     print('-' * 120)
 
-# %% [markdown]
 # ### Run CV
 
-# %%
 import warnings
 
 # Seed everything in pytorch lightning
@@ -805,13 +751,7 @@ def train_model(
         metrics.update(test_metrics)
     return model, trainer, metrics
 
-# %% [markdown]
 # Setup hyperparameter optimization:
-
-# %%
-import optuna
-import pandas as pd
-
 
 def objective(
         trial,
@@ -926,10 +866,8 @@ def hyperparameter_tuning_and_training(
 # train_df, val_df, test_df = load_your_data()  # You need to load your datasets here
 # model, trainer, best_metrics = hyperparameter_tuning_and_training(train_df, val_df, test_df)
 
-# %% [markdown]
 # Loop over the different splits and train the model:
 
-# %%
 n_splits = 5
 report = []
 active_df = protac_df[protac_df[active_col].notna()]
@@ -998,4 +936,3 @@ report = pd.DataFrame(report)
 report.to_csv(
     f'../reports/cv_report_hparam_search_{n_splits}-splits.csv', index=False,
 )
-

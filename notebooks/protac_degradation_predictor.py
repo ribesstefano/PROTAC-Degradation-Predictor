@@ -767,7 +767,7 @@ def objective(
     # Generate the hyperparameters
     hidden_dim = trial.suggest_categorical('hidden_dim', hidden_dim_options)
     batch_size = trial.suggest_categorical('batch_size', batch_size_options)
-    learning_rate = trial.suggest_loguniform('learning_rate', *learning_rate_options)
+    learning_rate = trial.suggest_float('learning_rate', *learning_rate_options, log=True)
     max_epochs = trial.suggest_categorical('max_epochs', max_epochs_options)
     smote_k_neighbors = trial.suggest_categorical('smote_k_neighbors', smote_k_neighbors_options)
 
@@ -939,5 +939,5 @@ for group_type in ['random', 'uniprot', 'tanimoto']:
         report.append(stats)
 report = pd.DataFrame(report)
 report.to_csv(
-    f'../reports/cv_report_hparam_search_{n_splits}-splits.csv', index=False,
+    f'../reports/cv_report_hparam_search_{n_splits}-splits_{active_col.replace(' ', '').lower()}.csv', index=False,
 )

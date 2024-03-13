@@ -939,5 +939,5 @@ for group_type in ['random', 'uniprot', 'tanimoto']:
         report.append(stats)
 report = pd.DataFrame(report)
 report.to_csv(
-    f'../reports/cv_report_hparam_search_{n_splits}-splits_{active_col.replace(' ', '').lower()}.csv', index=False,
+    f'../reports/cv_report_hparam_search_{n_splits}-splits_{active_col.replace(" ", "").lower()}.csv', index=False,
 )

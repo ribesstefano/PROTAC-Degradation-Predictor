@@ -160,8 +160,8 @@ smiles2fp = {s: np.array(fp) for s, fp in smiles2fp.items()}
 
 # ## Set the Column to Predict
 
-# active_col = 'Active'
-active_col = 'Active - OR'
+active_col = 'Active'
+# active_col = 'Active - OR'
 
 
 class PROTAC_Dataset(Dataset):
@@ -871,8 +871,10 @@ def hyperparameter_tuning_and_training(
 # model, trainer, best_metrics = hyperparameter_tuning_and_training(train_df, val_df, test_df)
 
 # Loop over the different splits and train the model:
-
+active_name = active_col.replace(' ', '').lower()
+active_name = 'active-and' if active_name == 'active' else active_name
 n_splits = 5
+
 report = []
 active_df = protac_df[protac_df[active_col].notna()]
 train_val_df = active_df[~active_df.index.isin(unique_samples)]
@@ -931,7 +933,7 @@ for group_type in ['random', 'uniprot', 'tanimoto']:
             test_df,
             fast_dev_run=False,
             n_trials=50,
-            logger_name=f'protac_{group_type}_fold_{k}',
+            logger_name=f'protac_{active_name}_{group_type}_fold_{k}',
         )
         stats.update(metrics)
         del model
@@ -939,5 +941,6 @@ for group_type in ['random', 'uniprot', 'tanimoto']:
         report.append(stats)
 report = pd.DataFrame(report)
 report.to_csv(
-    f'../reports/cv_report_hparam_search_{n_splits}-splits_{active_col.replace(" ", "").lower()}.csv', index=False,
+    f'../reports/cv_report_hparam_search_{n_splits}-splits_{active_name}.csv',
+    index=False,
 )

@@ -619,19 +619,19 @@ def train_model(
             monitor='train_loss',
             patience=10,
             mode='min',
-            verbose=True,
+            verbose=False,
         ),
         pl.callbacks.EarlyStopping(
             monitor='val_loss',
             patience=5,
             mode='min',
-            verbose=True,
+            verbose=False,
         ),
         pl.callbacks.EarlyStopping(
             monitor='val_acc',
             patience=10,
             mode='max',
-            verbose=True,
+            verbose=False,
         ),
         # pl.callbacks.ModelCheckpoint(
         #     monitor='val_acc',
@@ -1042,8 +1042,8 @@ def main(
                 del model
                 del trainer
 
-        report = pd.DataFrame(report)
-        report.to_csv(
+        report_df = pd.DataFrame(report)
+        report_df.to_csv(
             f'../reports/cv_report_hparam_search_{cv_n_splits}-splits_{active_name}_test_split_{test_split}.csv',
             index=False,
         )

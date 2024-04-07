@@ -959,6 +959,7 @@ def main(
     if not os.path.exists('../reports'):
         os.makedirs('../reports')
 
+    report = []
     for split_type, indeces in test_indeces.items():
         active_df = protac_df[protac_df[active_col].notna()].copy()
         test_df = active_df.loc[indeces]
@@ -979,7 +980,6 @@ def main(
         # Start the CV over the folds
         X = train_val_df.drop(columns=active_col)
         y = train_val_df[active_col].tolist()
-        report = []
         for k, (train_index, val_index) in enumerate(kf.split(X, y, group)):
             print('-' * 100)
             print(f'Starting CV for group type: {split_type}, fold: {k}')
@@ -997,21 +997,20 @@ def main(
                 'val_len': len(val_df),
                 'train_perc': len(train_df) / len(train_val_df),
                 'val_perc': len(val_df) / len(train_val_df),
-                'train_active_perc': train_df[active_col].sum() / len(train_df) * 100,
-                'train_inactive_perc': (len(train_df) - train_df[active_col].sum()) / len(train_df) * 100,
-                'val_active_perc': val_df[active_col].sum() / len(val_df) * 100,
-                'val_inactive_perc': (len(val_df) - val_df[active_col].sum()) / len(val_df) * 100,
+                'train_active_perc': train_df[active_col].sum() / len(train_df),
+                'train_inactive_perc': (len(train_df) - train_df[active_col].sum()) / len(train_df),
+                'val_active_perc': val_df[active_col].sum() / len(val_df),
+                'val_inactive_perc': (len(val_df) - val_df[active_col].sum()) / len(val_df),
                 'test_active_perc': test_df[active_col].sum() / len(test_df),
                 'test_inactive_perc': (len(test_df) - test_df[active_col].sum()) / len(test_df),
                 'num_leaking_uniprot': len(leaking_uniprot),
                 'num_leaking_smiles': len(leaking_smiles),
-                'train_leaking_uniprot_perc': len(train_df[train_df['Uniprot'].isin(leaking_uniprot)]) / len(train_df) * 100,
-                'train_leaking_smiles_perc': len(train_df[train_df['Smiles'].isin(leaking_smiles)]) / len(train_df) * 100,
+                'train_leaking_uniprot_perc': len(train_df[train_df['Uniprot'].isin(leaking_uniprot)]) / len(train_df),
+                'train_leaking_smiles_perc': len(train_df[train_df['Smiles'].isin(leaking_smiles)]) / len(train_df),
             }
             if split_type != 'random':
                 stats['train_unique_groups'] = len(np.unique(group[train_index]))
                 stats['val_unique_groups'] = len(np.unique(group[val_index]))
-            report.append(stats)
             
             # Train and evaluate the model
             model, trainer, metrics = hyperparameter_tuning_and_training(

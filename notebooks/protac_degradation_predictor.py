@@ -6,6 +6,7 @@ from collections import defaultdict
 from typing import Literal, List, Tuple, Optional
 import urllib.request
 
+import joblib
 import optuna
 from optuna.samplers import TPESampler
 import h5py
@@ -754,6 +755,7 @@ def hyperparameter_tuning_and_training(
         logger_name: str = 'protac_hparam_search',
         active_label: str = 'Active',
         disabled_embeddings: List[str] = [],
+        study_filename: Optional[str] = None,
 ) -> tuple:
     """ Hyperparameter tuning and training of a PROTAC model.
     
@@ -797,6 +799,9 @@ def hyperparameter_tuning_and_training(
         n_trials=n_trials,
     )
 
+    if study_filename:
+        joblib.dump(study, study_filename)
+
     # Retrain the model with the best hyperparameters
     model, trainer, metrics = train_model(
         train_df,
@@ -833,7 +838,7 @@ def main(
         fast_dev_run (bool): Whether to run a fast development run.
     """
     ## Set the Column to Predict
-    active_name = active_col.replace(' ', '_').strip('(').strip(')').strip(',')
+    active_name = active_col.replace(' ', '_').replace('(', '').replace(')', '').replace(',', '')
 
     # Get Dmax_threshold from the active_col
     Dmax_threshold = float(active_col.split('Dmax')[1].split(',')[0].strip('(').strip(')').strip())
@@ -987,18 +992,21 @@ def main(
 
             stats = {
                 'fold': k,
+                'split_type': split_type,
                 'train_len': len(train_df),
                 'val_len': len(val_df),
                 'train_perc': len(train_df) / len(train_val_df),
                 'val_perc': len(val_df) / len(train_val_df),
-                'train_active (%)': train_df[active_col].sum() / len(train_df) * 100,
-                'train_inactive (%)': (len(train_df) - train_df[active_col].sum()) / len(train_df) * 100,
-                'val_active (%)': val_df[active_col].sum() / len(val_df) * 100,
-                'val_inactive (%)': (len(val_df) - val_df[active_col].sum()) / len(val_df) * 100,
+                'train_active_perc': train_df[active_col].sum() / len(train_df) * 100,
+                'train_inactive_perc': (len(train_df) - train_df[active_col].sum()) / len(train_df) * 100,
+                'val_active_perc': val_df[active_col].sum() / len(val_df) * 100,
+                'val_inactive_perc': (len(val_df) - val_df[active_col].sum()) / len(val_df) * 100,
+                'test_active_perc': test_df[active_col].sum() / len(test_df),
+                'test_inactive_perc': (len(test_df) - test_df[active_col].sum()) / len(test_df),
                 'num_leaking_uniprot': len(leaking_uniprot),
                 'num_leaking_smiles': len(leaking_smiles),
-                'train_leaking_uniprot (%)': len(train_df[train_df['Uniprot'].isin(leaking_uniprot)]) / len(train_df) * 100,
-                'train_leaking_smiles (%)': len(train_df[train_df['Smiles'].isin(leaking_smiles)]) / len(train_df) * 100,
+                'train_leaking_uniprot_perc': len(train_df[train_df['Uniprot'].isin(leaking_uniprot)]) / len(train_df) * 100,
+                'train_leaking_smiles_perc': len(train_df[train_df['Smiles'].isin(leaking_smiles)]) / len(train_df) * 100,
             }
             if split_type != 'random':
                 stats['train_unique_groups'] = len(np.unique(group[train_index]))
@@ -1012,8 +1020,9 @@ def main(
                 test_df,
                 fast_dev_run=fast_dev_run,
                 n_trials=n_trials,
-                logger_name=f'protac_{active_name}_{split_type}_fold_{k}',
+                logger_name=f'protac_{active_name}_{split_type}_fold_{k}_test_split_{test_split}',
                 active_label=active_col,
+                study_filename=f'../reports/study_{active_name}_{split_type}_fold_{k}_test_split_{test_split}.pkl',
             )
             hparams = {p.strip('hparam_'): v for p, v in stats.items() if p.startswith('hparam_')}
             stats.update(metrics)

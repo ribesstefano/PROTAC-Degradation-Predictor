@@ -783,24 +783,32 @@ def hyperparameter_tuning_and_training(
     # Create an Optuna study object
     sampler = TPESampler(seed=42, multivariate=True)
     study = optuna.create_study(direction='minimize', sampler=sampler)
-    study.optimize(
-        lambda trial: objective(
-            trial,
-            train_df,
-            val_df,
-            hidden_dim_options=hidden_dim_options,
-            batch_size_options=batch_size_options,
-            learning_rate_options=learning_rate_options,
-            smote_k_neighbors_options=smote_k_neighbors_options,
-            fast_dev_run=fast_dev_run,
-            active_label=active_label,
-            disabled_embeddings=disabled_embeddings,
-        ),
-        n_trials=n_trials,
-    )
 
+    study_loaded = False
     if study_filename:
-        joblib.dump(study, study_filename)
+        if os.path.exists(study_filename):
+            study = joblib.load(study_filename)
+            study_loaded = True
+            print(f'Loaded study from {study_filename}')
+
+    if not study_loaded:
+        study.optimize(
+            lambda trial: objective(
+                trial,
+                train_df,
+                val_df,
+                hidden_dim_options=hidden_dim_options,
+                batch_size_options=batch_size_options,
+                learning_rate_options=learning_rate_options,
+                smote_k_neighbors_options=smote_k_neighbors_options,
+                fast_dev_run=fast_dev_run,
+                active_label=active_label,
+                disabled_embeddings=disabled_embeddings,
+            ),
+            n_trials=n_trials,
+        )
+        if study_filename:
+            joblib.dump(study, study_filename)
 
     # Retrain the model with the best hyperparameters
     model, trainer, metrics = train_model(
@@ -1030,7 +1038,7 @@ def main(
             del trainer
 
             # Ablation study: disable embeddings at a time
-            for disabled_embeddings in [['poi'], ['cell'], ['smiles'], ['e3', 'cell'], ['poi', 'e3', 'cell']]:
+            for disabled_embeddings in [['e3'], ['poi'], ['cell'], ['smiles'], ['e3', 'cell'], ['poi', 'e3', 'cell']]:
                 print('-' * 100)
                 print(f'Ablation study with disabled embeddings: {disabled_embeddings}')
                 print('-' * 100)

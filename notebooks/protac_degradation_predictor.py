@@ -19,11 +19,13 @@ from rdkit import DataStructs
 from jsonargparse import CLI
 from tqdm.auto import tqdm
 from imblearn.over_sampling import SMOTE, ADASYN
+
 from sklearn.preprocessing import OrdinalEncoder, StandardScaler, LabelEncoder
 from sklearn.model_selection import (
     StratifiedKFold,
     StratifiedGroupKFold,
 )
+from sklearn.base import ClassifierMixin
 
 import torch
 import torch.nn as nn
@@ -37,8 +39,8 @@ from torchmetrics import (
     Precision,
     Recall,
     F1Score,
+    MetricCollection,
 )
-from torchmetrics import MetricCollection
 
 
 # Ignore UserWarning from Matplotlib
@@ -311,6 +313,16 @@ class PROTAC_Dataset(Dataset):
             self.data['E3 Ligase Uniprot'] = self.data['E3 Ligase Uniprot'].apply(lambda x: scalers['E3 Ligase Uniprot'].transform(x[np.newaxis, :])[0])
             self.data['Cell Line Identifier'] = self.data['Cell Line Identifier'].apply(lambda x: scalers['Cell Line Identifier'].transform(x[np.newaxis, :])[0])
 
+    def get_numpy_arrays(self):
+        X = np.hstack([
+            np.array(self.data['Smiles'].tolist()),
+            np.array(self.data['Uniprot'].tolist()),
+            np.array(self.data['E3 Ligase Uniprot'].tolist()),
+            np.array(self.data['Cell Line Identifier'].tolist()),
+        ]).copy()
+        y = self.data[self.active_label].values.copy()
+        return X, y
+
     def __len__(self):
         return len(self.data)
 
@@ -323,6 +335,97 @@ class PROTAC_Dataset(Dataset):
             'active': self.data[self.active_label].iloc[idx],
         }
         return elem
+
+def train_sklearn_model(
+    clf: ClassifierMixin,
+    train_df: pd.DataFrame,
+    val_df: pd.DataFrame,
+    test_df: Optional[pd.DataFrame] = None,
+    active_label: str = 'Active',
+    use_single_scaler: bool = True,
+) -> Tuple[ClassifierMixin, nn.ModuleDict]:
+    """ Train a classifier model on train and val sets and evaluate it on a test set.
+
+    Args:
+        clf: The classifier model to train and evaluate.
+        train_df (pd.DataFrame): The training set.
+        val_df (pd.DataFrame): The validation set.
+        test_df (Optional[pd.DataFrame]): The test set.
+
+    Returns:
+        Tuple[ClassifierMixin, nn.ModuleDict]: The trained model and the metrics.
+    """
+    # Initialize the datasets
+    train_ds = PROTAC_Dataset(
+        train_df,
+        protein_embeddings,
+        cell2embedding,
+        smiles2fp,
+        active_label=active_label,
+        use_smote=False,
+    )
+    scaler = train_ds.fit_scaling(use_single_scaler=use_single_scaler)
+    train_ds.apply_scaling(scaler, use_single_scaler=use_single_scaler)
+    val_ds = PROTAC_Dataset(
+        val_df,
+        protein_embeddings,
+        cell2embedding,
+        smiles2fp,
+        active_label=active_label,
+        use_smote=False,
+    )
+    val_ds.apply_scaling(scaler, use_single_scaler=use_single_scaler)
+    if test_df is not None:
+        test_ds = PROTAC_Dataset(
+            test_df,
+            protein_embeddings,
+            cell2embedding,
+            smiles2fp,
+            active_label=active_label,
+            use_smote=False,
+        )
+        test_ds.apply_scaling(scaler, use_single_scaler=use_single_scaler)
+
+    # Get the numpy arrays
+    X_train, y_train = train_ds.get_numpy_arrays()
+    X_val, y_val = val_ds.get_numpy_arrays()
+    if test_df is not None:
+        X_test, y_test = test_ds.get_numpy_arrays()
+
+    # Train the model
+    clf.fit(X_train, y_train)
+    # Define the metrics as a module dict
+    stages = ['train_metrics', 'val_metrics', 'test_metrics']
+    metrics = nn.ModuleDict({s: MetricCollection({
+        'acc': Accuracy(task='binary'),
+        'roc_auc': AUROC(task='binary'),
+        'precision': Precision(task='binary'),
+        'recall': Recall(task='binary'),
+        'f1_score': F1Score(task='binary'),
+        'opt_score': Accuracy(task='binary') + F1Score(task='binary'),
+        'hp_metric': Accuracy(task='binary'),
+    }, prefix=s.replace('metrics', '')) for s in stages})
+
+    # Get the predictions
+    metrics_out = {}
+
+    y_pred = torch.tensor(clf.predict_proba(X_train)[:, 1])
+    y_true = torch.tensor(y_train)
+    metrics['train_metrics'].update(y_pred, y_true)
+    metrics_out.update(metrics['train_metrics'].compute())
+
+    y_pred = torch.tensor(clf.predict_proba(X_val)[:, 1])
+    y_true = torch.tensor(y_val)
+    metrics['val_metrics'].update(y_pred, y_true)
+    metrics_out.update(metrics['val_metrics'].compute())
+
+    if test_df is not None:
+        y_pred = torch.tensor(clf.predict_proba(X_test)[:, 1])
+        y_true = torch.tensor(y_test)
+        metrics['test_metrics'].update(y_pred, y_true)
+        metrics_out.update(metrics['test_metrics'].compute())
+
+    return clf, metrics_out
 
 
 class PROTAC_Model(pl.LightningModule):
@@ -573,7 +676,7 @@ def train_model(
     Args:
         train_df (pd.DataFrame): The training set.
         val_df (pd.DataFrame): The validation set.
-        test_df (pd.DataFrame): The test set.
+        test_df (pd.DataFrame): The test set. If provided, the returned metrics will include test performance.
         hidden_dim (int): The hidden dimension of the model.
         batch_size (int): The batch size.
         learning_rate (float): The learning rate.
@@ -882,6 +985,7 @@ def main(
     encoder = OrdinalEncoder()
     protac_df['Tanimoto Group'] = encoder.fit_transform(tanimoto_groups.values.reshape(-1, 1)).astype(int)
     active_df = protac_df[protac_df[active_col].notna()].copy()
+    tanimoto_groups = active_df.groupby('Tanimoto Group')['Avg Tanimoto'].mean().sort_values(ascending=False).index
 
     test_df = []
     # For each group, get the number of active and inactive entries. Then, add those
@@ -889,7 +993,7 @@ def main(
     # 20% of the active_df lenght, and 2) the percentage of True and False entries
     # in the active_col in test_df is roughly 50%.
     # Start the loop from the groups containing the smallest number of entries.
-    for group in reversed(active_df['Tanimoto Group'].value_counts().index):
+    for group in tanimoto_groups:
         group_df = active_df[active_df['Tanimoto Group'] == group]
         if test_df == []:
             test_df.append(group_df)
@@ -969,6 +1073,8 @@ def main(
 
     report = []
     for split_type, indeces in test_indeces.items():
+        if split_type != 'tanimoto':
+            continue
         active_df = protac_df[protac_df[active_col].notna()].copy()
         test_df = active_df.loc[indeces]
         train_val_df = active_df[~active_df.index.isin(test_df.index)]
@@ -1060,7 +1166,7 @@ def main(
 
         report_df = pd.DataFrame(report)
         report_df.to_csv(
-            f'../reports/cv_report_hparam_search_{cv_n_splits}-splits_{active_name}_test_split_{test_split}.csv',
+            f'../reports/cv_report_hparam_search_{cv_n_splits}-splits_{active_name}_test_split_{test_split}_tanimoto.csv',
             index=False,
         )
 

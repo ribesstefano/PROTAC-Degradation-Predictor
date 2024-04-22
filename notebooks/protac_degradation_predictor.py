@@ -680,7 +680,7 @@ def train_model(
         hidden_dim (int): The hidden dimension of the model.
         batch_size (int): The batch size.
         learning_rate (float): The learning rate.
-        max_epochs (int): The maximum number of epochs.
+        max_epochs (int): Th    e maximum number of epochs.
         smiles_emb_dim (int): The dimension of the SMILES embeddings.
         smote_k_neighbors (int): The number of neighbors for the SMOTE oversampler.
         fast_dev_run (bool): Whether to run a fast development run.
@@ -985,6 +985,8 @@ def main(
     encoder = OrdinalEncoder()
     protac_df['Tanimoto Group'] = encoder.fit_transform(tanimoto_groups.values.reshape(-1, 1)).astype(int)
     active_df = protac_df[protac_df[active_col].notna()].copy()
+    # Sort the groups so that samples with the highest tanimoto similarity,
+    # i.e., the "less similar" ones, are placed in the test set first
     tanimoto_groups = active_df.groupby('Tanimoto Group')['Avg Tanimoto'].mean().sort_values(ascending=False).index
 
     test_df = []
@@ -992,7 +994,6 @@ def main(
     # entries to the test_df if: 1) the test_df lenght + the group entries is less
     # 20% of the active_df lenght, and 2) the percentage of True and False entries
     # in the active_col in test_df is roughly 50%.
-    # Start the loop from the groups containing the smallest number of entries.
     for group in tanimoto_groups:
         group_df = active_df[active_df['Tanimoto Group'] == group]
         if test_df == []:

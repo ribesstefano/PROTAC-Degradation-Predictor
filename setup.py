@@ -9,7 +9,7 @@ setuptools.setup(
     description="A package to predict PROTAC-induced protein degradation.",
     long_description=open("README.md").read(),
     packages=setuptools.find_packages(),
-    install_requires=["torch", "pytorch_lightning", "sklearn", "imblearn", "pandas", "joblib", "h5py", "optuna", "torchmetrics"],
+    install_requires=["torch", "pytorch_lightning", "scikit-learn", "imblearn", "rdkit-pypi", "pandas", "joblib", "h5py", "optuna", "torchmetrics"],
     classifiers=[
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.6",

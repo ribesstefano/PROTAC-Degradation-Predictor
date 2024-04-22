@@ -1,19 +1,21 @@
 import pkg_resources
 import logging
 
-from pytorch_models import PROTAC_Model, load_model
-from data_utils import (
+from .pytorch_models import PROTAC_Model, load_model
+from .data_utils import (
     load_protein2embedding,
     load_cell2embedding,
     get_fingerprint,
 )
-from config import config
+from .config import config
 
 import numpy as np
 import torch
 from torch import sigmoid
 
+
 package_name = 'protac_degradation_predictor'
+
 
 def get_protac_active_proba(
         protac_smiles: str,

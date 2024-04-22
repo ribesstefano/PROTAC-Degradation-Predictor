@@ -1,6 +1,6 @@
 from typing import Literal, List, Tuple, Optional, Dict
 
-from protac_dataset import PROTAC_Dataset
+from .protac_dataset import PROTAC_Dataset
 
 import pandas as pd
 from sklearn.base import ClassifierMixin

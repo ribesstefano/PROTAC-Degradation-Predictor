@@ -1,8 +1,8 @@
 import warnings
 from typing import Literal, List, Tuple, Optional, Dict
 
-from protac_dataset import PROTAC_Dataset
-from config import Config
+from .protac_dataset import PROTAC_Dataset
+from .config import Config
 
 import pandas as pd
 import numpy as np

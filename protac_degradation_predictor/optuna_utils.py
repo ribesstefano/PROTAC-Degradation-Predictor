@@ -1,8 +1,8 @@
 import os
 from typing import Literal, List, Tuple, Optional, Dict
 
-from pytorch_models import train_model
-from sklearn_models import (
+from .pytorch_models import train_model
+from .sklearn_models import (
     train_sklearn_model,
     suggest_random_forest,
     suggest_logistic_regression,

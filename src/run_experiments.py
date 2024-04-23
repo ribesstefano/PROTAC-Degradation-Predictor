@@ -1,19 +1,12 @@
 import os
+import sys
 from collections import defaultdict
 import warnings
 
-from protac_degradation_predictor.config import config
-from protac_degradation_predictor.data_utils import (
-    load_protein2embedding,
-    load_cell2embedding,
-    is_active,
-)
-from protac_degradation_predictor.pytorch_models import (
-    train_model,
-)
-from protac_degradation_predictor.optuna_utils import (
-    hyperparameter_tuning_and_training,
-)
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+import protac_degradation_predictor as pdp
 
 from rdkit import Chem
 from rdkit.Chem import AllChem
@@ -28,78 +21,53 @@ from sklearn.model_selection import (
     StratifiedGroupKFold,
 )
 
-
 # Ignore UserWarning from Matplotlib
 warnings.filterwarnings("ignore", ".*FixedLocator*")
 # Ignore UserWarning from PyTorch Lightning
 warnings.filterwarnings("ignore", ".*does not have many workers.*")
 
 
-def main(
-    active_col: str = 'Active (Dmax 0.6, pDC50 6.0)',
-    n_trials: int = 50,
-    fast_dev_run: bool = False,
-    test_split: float = 0.2,
-    cv_n_splits: int = 5,
-):
-    """ Train a PROTAC model using the given datasets and hyperparameters.
+def get_random_split_indices(active_df: pd.DataFrame, test_split: float) -> pd.Index:
+    """ Get the indices of the test set using a random split.
     
     Args:
-        use_ored_activity (bool): Whether to use the 'Active - OR' column.
-        n_trials (int): The number of hyperparameter optimization trials.
-        n_splits (int): The number of cross-validation splits.
-        fast_dev_run (bool): Whether to run a fast development run.
+        active_df (pd.DataFrame): The DataFrame containing the active PROTACs.
+        test_split (float): The percentage of the active PROTACs to use as the test set.
+    
+    Returns:
+        pd.Index: The indices of the test set.
     """
-    ## Set the Column to Predict
-    active_name = active_col.replace(' ', '_').replace('(', '').replace(')', '').replace(',', '')
-
-    # Get Dmax_threshold from the active_col
-    Dmax_threshold = float(active_col.split('Dmax')[1].split(',')[0].strip('(').strip(')').strip())
-    pDC50_threshold = float(active_col.split('pDC50')[1].strip('(').strip(')').strip())
-
-    ## Load the Data
-    protac_df = pd.read_csv('../data/PROTAC-Degradation-DB.csv')
-
-    # Map E3 Ligase Iap to IAP
-    protac_df['E3 Ligase'] = protac_df['E3 Ligase'].str.replace('Iap', 'IAP')
-
-    protac_df[active_col] = protac_df.apply(
-        lambda x: is_active(x['DC50 (nM)'], x['Dmax (%)'], pDC50_threshold=pDC50_threshold, Dmax_threshold=Dmax_threshold), axis=1
-    )
-
-    ## Test Sets
-
-    test_indeces = {}
-
-    ### Random Split
-
-    # Randomly select 20% of the active PROTACs as the test set
-    active_df = protac_df[protac_df[active_col].notna()].copy()
     test_df = active_df.sample(frac=test_split, random_state=42)
-    test_indeces['random'] = test_df.index
+    return test_df.index
 
-    ### E3-based Split
 
+def get_e3_ligase_split_indices(active_df: pd.DataFrame) -> pd.Index:
+    """ Get the indices of the test set using the E3 ligase split.
+    
+    Args:
+        active_df (pd.DataFrame): The DataFrame containing the active PROTACs.
+    
+    Returns:
+        pd.Index: The indices of the test set.
+    """
     encoder = OrdinalEncoder()
-    protac_df['E3 Group'] = encoder.fit_transform(protac_df[['E3 Ligase']]).astype(int)
-    active_df = protac_df[protac_df[active_col].notna()].copy()
+    active_df['E3 Group'] = encoder.fit_transform(active_df[['E3 Ligase']]).astype(int)
     test_df = active_df[(active_df['E3 Ligase'] != 'VHL') & (active_df['E3 Ligase'] != 'CRBN')]
-    test_indeces['e3_ligase'] = test_df.index
+    return test_df.index
 
-    ### Tanimoto-based Split
 
-    #### Precompute fingerprints
-    morgan_fpgen = AllChem.GetMorganGenerator(
-        radius=config.morgan_radius,
-        fpSize=config.fingerprint_size,
-        includeChirality=True,
-    )
-
+def get_smiles2fp_and_avg_tanimoto(protac_df: pd.DataFrame) -> tuple:
+    """ Get the SMILES to fingerprint dictionary and the average Tanimoto similarity.
+    
+    Args:
+        protac_df (pd.DataFrame): The DataFrame containing the PROTACs.
+    
+    Returns:
+        tuple: The SMILES to fingerprint dictionary and the average Tanimoto similarity.
+    """
     smiles2fp = {}
     for smiles in tqdm(protac_df['Smiles'].unique().tolist(), desc='Precomputing fingerprints'):
-        # Get the fingerprint as a bit vector
-        morgan_fp = morgan_fpgen.GetFingerprint(Chem.MolFromSmiles(smiles))
-        smiles2fp[smiles] = morgan_fp
+        smiles2fp[smiles] = pdp.get_fingerprint(smiles)
 
     # Get the pair-wise tanimoto similarity between the PROTAC fingerprints
     tanimoto_matrix = defaultdict(list)
@@ -117,12 +85,27 @@ def main(
 
     smiles2fp = {s: np.array(fp) for s, fp in smiles2fp.items()}
 
-    # Make the grouping of the PROTACs based on the Tanimoto similarity
-    n_bins_tanimoto = 200
-    tanimoto_groups = pd.cut(protac_df['Avg Tanimoto'], bins=n_bins_tanimoto).copy()
+    return smiles2fp, protac_df
+
+
+def get_tanimoto_split_indices(
+        active_df: pd.DataFrame,
+        active_col: str,
+        test_split: float,
+        n_bins_tanimoto: int = 200,
+) -> pd.Index:
+    """ Get the indices of the test set using the Tanimoto-based split.
+    
+    Args:
+        active_df (pd.DataFrame): The DataFrame containing the active PROTACs.
+        n_bins_tanimoto (int): The number of bins to use for the Tanimoto similarity.
+    
+    Returns:
+        pd.Index: The indices of the test set.
+    """
+    tanimoto_groups = pd.cut(active_df['Avg Tanimoto'], bins=n_bins_tanimoto).copy()
     encoder = OrdinalEncoder()
-    protac_df['Tanimoto Group'] = encoder.fit_transform(tanimoto_groups.values.reshape(-1, 1)).astype(int)
-    active_df = protac_df[protac_df[active_col].notna()].copy()
+    active_df['Tanimoto Group'] = encoder.fit_transform(tanimoto_groups.values.reshape(-1, 1)).astype(int)
     # Sort the groups so that samples with the highest tanimoto similarity,
     # i.e., the "less similar" ones, are placed in the test set first
     tanimoto_groups = active_df.groupby('Tanimoto Group')['Avg Tanimoto'].mean().sort_values(ascending=False).index
@@ -159,14 +142,22 @@ def main(
                 if (num_inactive_group + num_inactive_test) / (num_entries_test + num_entries) < 0.6:
                     test_df.append(group_df)
     test_df = pd.concat(test_df)
-    # Save to global dictionary of test indeces
-    test_indeces['tanimoto'] = test_df.index
+    return test_df.index
 
-    ### Target-based Split
 
+def get_target_split_indices(active_df: pd.DataFrame, active_col: str, test_split: float) -> pd.Index:
+    """ Get the indices of the test set using the target-based split.
+
+    Args:
+        active_df (pd.DataFrame): The DataFrame containing the active PROTACs.
+        active_col (str): The column containing the active/inactive information.
+        test_split (float): The percentage of the active PROTACs to use as the test set.
+
+    Returns:
+        pd.Index: The indices of the test set.
+    """
     encoder = OrdinalEncoder()
-    protac_df['Uniprot Group'] = encoder.fit_transform(protac_df[['Uniprot']]).astype(int)
-    active_df = protac_df[protac_df[active_col].notna()].copy()
+    active_df['Uniprot Group'] = encoder.fit_transform(active_df[['Uniprot']]).astype(int)
 
     test_df = []
     # For each group, get the number of active and inactive entries. Then, add those
@@ -201,25 +192,64 @@ def main(
                 if (num_inactive_group + num_inactive_test) / (num_entries_test + num_entries) < 0.6:
                     test_df.append(group_df)
     test_df = pd.concat(test_df)
-    # Save to global dictionary of test indeces
-    test_indeces['uniprot'] = test_df.index
+    return test_df.index
 
-    ## Cross-Validation Training
+
+def main(
+    active_col: str = 'Active (Dmax 0.6, pDC50 6.0)',
+    n_trials: int = 50,
+    fast_dev_run: bool = False,
+    test_split: float = 0.2,
+    cv_n_splits: int = 5,
+):
+    """ Train a PROTAC model using the given datasets and hyperparameters.
+    
+    Args:
+        use_ored_activity (bool): Whether to use the 'Active - OR' column.
+        n_trials (int): The number of hyperparameter optimization trials.
+        n_splits (int): The number of cross-validation splits.
+        fast_dev_run (bool): Whether to run a fast development run.
+    """
+    # Set the Column to Predict
+    active_name = active_col.replace(' ', '_').replace('(', '').replace(')', '').replace(',', '')
+
+    # Get Dmax_threshold from the active_col
+    Dmax_threshold = float(active_col.split('Dmax')[1].split(',')[0].strip('(').strip(')').strip())
+    pDC50_threshold = float(active_col.split('pDC50')[1].strip('(').strip(')').strip())
+
+    # Load the PROTAC dataset
+    protac_df = pd.read_csv('../data/PROTAC-Degradation-DB.csv')
+    # Map E3 Ligase Iap to IAP
+    protac_df['E3 Ligase'] = protac_df['E3 Ligase'].str.replace('Iap', 'IAP')
+    protac_df[active_col] = protac_df.apply(
+        lambda x: pdp.is_active(x['DC50 (nM)'], x['Dmax (%)'], pDC50_threshold=pDC50_threshold, Dmax_threshold=Dmax_threshold), axis=1
+    )
+    smiles2fp, protac_df = get_smiles2fp_and_avg_tanimoto(protac_df)
+
+    ## Get the test sets
+    test_indeces = {}
+    active_df = protac_df[protac_df[active_col].notna()].copy()
+    test_indeces['random'] = get_random_split_indices(active_df, test_split)
+    test_indeces['e3_ligase'] = get_e3_ligase_split_indices(active_df)
+    test_indeces['tanimoto'] = get_tanimoto_split_indices(active_df, active_col, test_split)
+    test_indeces['uniprot'] = get_target_split_indices(active_df, active_col, test_split)
     
     # Make directory ../reports if it does not exist
     if not os.path.exists('../reports'):
         os.makedirs('../reports')
 
     # Load embedding dictionaries
-    protein2embedding = load_protein2embedding('../data/uniprot2embedding.h5')
-    cell2embedding = load_cell2embedding('../data/cell2embedding.pkl')
+    protein2embedding = pdp.load_protein2embedding('../data/uniprot2embedding.h5')
+    cell2embedding = pdp.load_cell2embedding('../data/cell2embedding.pkl')
 
+    # Cross-Validation Training
     report = []
     for split_type, indeces in test_indeces.items():
-        active_df = protac_df[protac_df[active_col].notna()].copy()
+        # active_df = protac_df[protac_df[active_col].notna()].copy()
         test_df = active_df.loc[indeces]
         train_val_df = active_df[~active_df.index.isin(test_df.index)]
         
+        # Get the CV object
         if split_type == 'random':
             kf = StratifiedKFold(n_splits=cv_n_splits, shuffle=True, random_state=42)
             group = None
@@ -232,6 +262,7 @@ def main(
         elif split_type == 'uniprot':
             kf = StratifiedGroupKFold(n_splits=cv_n_splits, shuffle=True, random_state=42)
             group = train_val_df['Uniprot Group'].to_numpy()
+
         # Start the CV over the folds
         X = train_val_df.drop(columns=active_col)
         y = train_val_df[active_col].tolist()
@@ -269,7 +300,7 @@ def main(
             
             print(stats)
         #     # Train and evaluate the model
-        #     model, trainer, metrics = hyperparameter_tuning_and_training(
+        #     model, trainer, metrics = pdp.hyperparameter_tuning_and_training(
         #         protein2embedding,
         #         cell2embedding,
         #         smiles2fp,
@@ -294,7 +325,7 @@ def main(
         #         print(f'Ablation study with disabled embeddings: {disabled_embeddings}')
         #         print('-' * 100)
         #         stats['disabled_embeddings'] = 'disabled ' + ' '.join(disabled_embeddings)
-        #         model, trainer, metrics = train_model(
+        #         model, trainer, metrics = pdp.train_model(
         #             protein2embedding,
         #             cell2embedding,
         #             smiles2fp,

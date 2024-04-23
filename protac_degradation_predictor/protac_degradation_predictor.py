@@ -14,9 +14,6 @@ import torch
 from torch import sigmoid
 
 
-package_name = 'protac_degradation_predictor'
-
-
 def get_protac_active_proba(
         protac_smiles: str,
         e3_ligase: str,

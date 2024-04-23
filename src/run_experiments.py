@@ -2,7 +2,7 @@ import os
 import sys
 from collections import defaultdict
 import warnings
-
+import logging
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -201,6 +201,7 @@ def main(
     fast_dev_run: bool = False,
     test_split: float = 0.2,
     cv_n_splits: int = 5,
+    run_sklearn: bool = False,
 ):
     """ Train a PROTAC model using the given datasets and hyperparameters.
     
@@ -245,9 +246,8 @@ def main(
     # Cross-Validation Training
     report = []
     for split_type, indeces in test_indeces.items():
-        # active_df = protac_df[protac_df[active_col].notna()].copy()
-        test_df = active_df.loc[indeces]
-        train_val_df = active_df[~active_df.index.isin(test_df.index)]
+        test_df = active_df.loc[indeces].copy()
+        train_val_df = active_df[~active_df.index.isin(test_df.index)].copy()
         
         # Get the CV object
         if split_type == 'random':
@@ -297,57 +297,86 @@ def main(
             if split_type != 'random':
                 stats['train_unique_groups'] = len(np.unique(group[train_index]))
                 stats['val_unique_groups'] = len(np.unique(group[val_index]))
-            
-            print(stats)
-        #     # Train and evaluate the model
-        #     model, trainer, metrics = pdp.hyperparameter_tuning_and_training(
-        #         protein2embedding,
-        #         cell2embedding,
-        #         smiles2fp,
-        #         train_df,
-        #         val_df,
-        #         test_df,
-        #         fast_dev_run=fast_dev_run,
-        #         n_trials=n_trials,
-        #         logger_name=f'protac_{active_name}_{split_type}_fold_{k}_test_split_{test_split}',
-        #         active_label=active_col,
-        #         study_filename=f'../reports/study_{active_name}_{split_type}_fold_{k}_test_split_{test_split}.pkl',
-        #     )
-        #     hparams = {p.replace('hparam_', ''): v for p, v in stats.items() if p.startswith('hparam_')}
-        #     stats.update(metrics)
-        #     report.append(stats.copy())
-        #     del model
-        #     del trainer
 
-        #     # Ablation study: disable embeddings at a time
-        #     for disabled_embeddings in [['e3'], ['poi'], ['cell'], ['smiles'], ['e3', 'cell'], ['poi', 'e3', 'cell']]:
-        #         print('-' * 100)
-        #         print(f'Ablation study with disabled embeddings: {disabled_embeddings}')
-        #         print('-' * 100)
-        #         stats['disabled_embeddings'] = 'disabled ' + ' '.join(disabled_embeddings)
-        #         model, trainer, metrics = pdp.train_model(
-        #             protein2embedding,
-        #             cell2embedding,
-        #             smiles2fp,
-        #             train_df,
-        #             val_df,
-        #             test_df,
-        #             fast_dev_run=fast_dev_run,
-        #             logger_name=f'protac_{active_name}_{split_type}_fold_{k}_disabled-{"-".join(disabled_embeddings)}',
-        #             active_label=active_col,
-        #             disabled_embeddings=disabled_embeddings,
-        #             **hparams,
-        #         )
-        #         stats.update(metrics)
-        #         report.append(stats.copy())
-        #         del model
-        #         del trainer
+            # At each fold, train and evaluate the Pytorch model
+            if split_type != 'tanimoto' or run_sklearn:
+                logging.info(f'Skipping Pytorch model training on fold {k} with split type {split_type} and test split {test_split}.')
+                continue
+            else:
+                logging.info(f'Starting Pytorch model training on fold {k} with split type {split_type} and test split {test_split}.')
+                # Train and evaluate the model
+                model, trainer, metrics = pdp.hyperparameter_tuning_and_training(
+                    protein2embedding,
+                    cell2embedding,
+                    smiles2fp,
+                    train_df,
+                    val_df,
+                    test_df,
+                    fast_dev_run=fast_dev_run,
+                    n_trials=n_trials,
+                    logger_name=f'protac_{active_name}_{split_type}_fold_{k}_test_split_{test_split}',
+                    active_label=active_col,
+                    study_filename=f'../reports/study_{active_name}_{split_type}_fold_{k}_test_split_{test_split}.pkl',
+                )
+                hparams = {p.replace('hparam_', ''): v for p, v in stats.items() if p.startswith('hparam_')}
+                stats.update(metrics)
+                stats['model_type'] = 'Pytorch'
+                report.append(stats.copy())
+                del model
+                del trainer
 
-        # report_df = pd.DataFrame(report)
-        # report_df.to_csv(
-        #     f'../reports/cv_report_hparam_search_{cv_n_splits}-splits_{active_name}_test_split_{test_split}_sklearn.csv',
-        #     index=False,
-        # )
+                # Ablation study: disable embeddings at a time
+                for disabled_embeddings in [['e3'], ['poi'], ['cell'], ['smiles'], ['e3', 'cell'], ['poi', 'e3', 'cell']]:
+                    print('-' * 100)
+                    print(f'Ablation study with disabled embeddings: {disabled_embeddings}')
+                    print('-' * 100)
+                    stats['disabled_embeddings'] = 'disabled ' + ' '.join(disabled_embeddings)
+                    model, trainer, metrics = pdp.train_model(
+                        protein2embedding,
+                        cell2embedding,
+                        smiles2fp,
+                        train_df,
+                        val_df,
+                        test_df,
+                        fast_dev_run=fast_dev_run,
+                        logger_name=f'protac_{active_name}_{split_type}_fold_{k}_disabled-{"-".join(disabled_embeddings)}',
+                        active_label=active_col,
+                        disabled_embeddings=disabled_embeddings,
+                        **hparams,
+                    )
+                    stats.update(metrics)
+                    report.append(stats.copy())
+                    del model
+                    del trainer
+
+            # At each fold, train and evaluate sklearn models
+            if run_sklearn:
+                for model_type in ['RandomForest', 'SVC', 'LogisticRegression', 'GradientBoosting']:
+                    logging.info(f'Starting sklearn model {model_type} training on fold {k} with split type {split_type} and test split {test_split}.')
+                    # Train and evaluate sklearn models
+                    model, metrics = pdp.hyperparameter_tuning_and_training_sklearn(
+                        protein2embedding=protein2embedding,
+                        cell2embedding=cell2embedding,
+                        smiles2fp=smiles2fp,
+                        train_df=train_df,
+                        val_df=val_df,
+                        test_df=test_df,
+                        model_type=model_type,
+                        active_label=active_col,
+                        n_trials=n_trials,
+                        study_filename=f'../reports/study_{active_name}_{split_type}_fold_{k}_test_split_{test_split}_{model_type.lower()}.pkl',
+                    )
+                    hparams = {p.replace('hparam_', ''): v for p, v in stats.items() if p.startswith('hparam_')}
+                    stats['model_type'] = model_type
+                    stats.update(metrics)
+                    report.append(stats.copy())
+
+        # Save the report at the end of each split type
+        report_df = pd.DataFrame(report)
+        report_df.to_csv(
+            f'../reports/cv_report_hparam_search_{cv_n_splits}-splits_{active_name}_test_split_{test_split}{"_sklearn" if run_sklearn else ""}.csv',
+            index=False,
+        )
 
 
 if __name__ == '__main__':

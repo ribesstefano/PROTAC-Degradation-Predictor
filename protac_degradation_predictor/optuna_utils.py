@@ -1,5 +1,6 @@
 import os
 from typing import Literal, List, Tuple, Optional, Dict
+import logging
 
 from .pytorch_models import train_model
 from .sklearn_models import (
@@ -141,7 +142,7 @@ def hyperparameter_tuning_and_training(
         if os.path.exists(study_filename):
             study = joblib.load(study_filename)
             study_loaded = True
-            print(f'Loaded study from {study_filename}')
+            logging.info(f'Loaded study from {study_filename}')
 
     if not study_loaded:
         study.optimize(
@@ -253,9 +254,23 @@ def hyperparameter_tuning_and_training_sklearn(
         model_type: Literal['RandomForest', 'SVC', 'LogisticRegression', 'GradientBoosting'] = 'RandomForest',
         active_label: str = 'Active',
         n_trials: int = 50,
-        logger_name: str = 'protac_hparam_search',
+        logger_name: str = 'protac_hparam_search_sklearn',
         study_filename: Optional[str] = None,
 ) -> Tuple:
+    """ Hyperparameter tuning and training of a PROTAC model.
+    
+    Args:
+        train_df (pd.DataFrame): The training set.
+        val_df (pd.DataFrame): The validation set.
+        test_df (pd.DataFrame): The test set.
+        model_type (str): The model type.
+        n_trials (int): The number of hyperparameter optimization trials.
+        logger_name (str): The name of the logger. Unused, for compatibility with hyperparameter_tuning_and_training.
+        active_label (str): The active label column.
+
+    Returns:
+        tuple: The trained model and the best metrics.
+    """
     # Set the verbosity of Optuna
     optuna.logging.set_verbosity(optuna.logging.WARNING)
     # Create an Optuna study object
@@ -267,7 +282,7 @@ def hyperparameter_tuning_and_training_sklearn(
         if os.path.exists(study_filename):
             study = joblib.load(study_filename)
             study_loaded = True
-            print(f'Loaded study from {study_filename}')
+            logging.info(f'Loaded study from {study_filename}')
     
     if not study_loaded:
         study.optimize(

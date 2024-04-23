@@ -41,13 +41,17 @@ class PROTAC_Dataset(Dataset):
             protein2embedding.keys())[0]].shape[0]
         self.cell_emb_dim = cell2embedding[list(
             cell2embedding.keys())[0]].shape[0]
+        
+        self.default_smiles_emb = np.zeros(self.smiles_emb_dim)
+        self.default_protein_emb = np.zeros(self.protein_emb_dim)
+        self.default_cell_emb = np.zeros(self.cell_emb_dim)
 
         # Look up the embeddings
         self.data = pd.DataFrame({
-            'Smiles': self.data['Smiles'].apply(lambda x: smiles2fp[x].astype(np.float32)).tolist(),
-            'Uniprot': self.data['Uniprot'].apply(lambda x: protein2embedding[x].astype(np.float32)).tolist(),
-            'E3 Ligase Uniprot': self.data['E3 Ligase Uniprot'].apply(lambda x: protein2embedding[x].astype(np.float32)).tolist(),
-            'Cell Line Identifier': self.data['Cell Line Identifier'].apply(lambda x: cell2embedding[x].astype(np.float32)).tolist(),
+            'Smiles': self.data['Smiles'].apply(lambda x: smiles2fp.get(x, self.default_smiles_emb).astype(np.float32)).tolist(),
+            'Uniprot': self.data['Uniprot'].apply(lambda x: protein2embedding.get(x, self.default_protein_emb).astype(np.float32)).tolist(),
+            'E3 Ligase Uniprot': self.data['E3 Ligase Uniprot'].apply(lambda x: protein2embedding.get(x, self.default_protein_emb).astype(np.float32)).tolist(),
+            'Cell Line Identifier': self.data['Cell Line Identifier'].apply(lambda x: cell2embedding.get(x, self.default_cell_emb).astype(np.float32)).tolist(),
             self.active_label: self.data[self.active_label].astype(np.float32).tolist(),
         })
 

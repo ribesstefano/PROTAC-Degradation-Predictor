@@ -146,12 +146,15 @@ class PROTAC_Dataset(Dataset):
             scalers (dict): The scalers for each feature.
             use_single_scaler (bool): Whether to use a single scaler for all features.
         """
-        if self.use_single_scaler is None:
-            raise ValueError(
-                "The fit_scaling method must be called before apply_scaling.")
-        if use_single_scaler != self.use_single_scaler:
-            raise ValueError(
-                f"The use_single_scaler parameter must be the same as the one used in the fit_scaling method. Got {use_single_scaler}, previously {self.use_single_scaler}.")
+        # TODO: The following check is WRONG: for val and test sets I must NOT
+        # use run the fit_scaling method, but I must use the scalers from the
+        # training set.
+        # if self.use_single_scaler is None:
+        #     raise ValueError(
+        #         "The fit_scaling method must be called before apply_scaling.")
+        # if use_single_scaler != self.use_single_scaler:
+        #     raise ValueError(
+        #         f"The use_single_scaler parameter must be the same as the one used in the fit_scaling method. Got {use_single_scaler}, previously {self.use_single_scaler}.")
         if use_single_scaler:
             embeddings = np.hstack([
                 np.array(self.data['Smiles'].tolist()),

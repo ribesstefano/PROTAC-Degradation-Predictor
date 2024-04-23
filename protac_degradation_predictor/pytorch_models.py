@@ -2,7 +2,7 @@ import warnings
 from typing import Literal, List, Tuple, Optional, Dict
 
 from .protac_dataset import PROTAC_Dataset
-from .config import Config
+from .config import config
 
 import pandas as pd
 import numpy as np
@@ -28,10 +28,10 @@ class PROTAC_Predictor(nn.Module):
     def __init__(
         self,
         hidden_dim: int,
-        smiles_emb_dim: int = Config.fingerprint_size,
-        poi_emb_dim: int = Config.protein_embedding_size,
-        e3_emb_dim: int = Config.protein_embedding_size,
-        cell_emb_dim: int = Config.cell_embedding_size,
+        smiles_emb_dim: int = config.fingerprint_size,
+        poi_emb_dim: int = config.protein_embedding_size,
+        e3_emb_dim: int = config.protein_embedding_size,
+        cell_emb_dim: int = config.cell_embedding_size,
         dropout: float = 0.2,
         join_embeddings: Literal['beginning', 'concat', 'sum'] = 'concat',
         disabled_embeddings: list = [],
@@ -131,10 +131,10 @@ class PROTAC_Model(pl.LightningModule):
     def __init__(
         self,
         hidden_dim: int,
-        smiles_emb_dim: int = 224,
-        poi_emb_dim: int = 1024,
-        e3_emb_dim: int = 1024,
-        cell_emb_dim: int = 768,
+        smiles_emb_dim: int = config.fingerprint_size,
+        poi_emb_dim: int = config.protein_embedding_size,
+        e3_emb_dim: int = config.protein_embedding_size,
+        cell_emb_dim: int = config.cell_embedding_size,
         batch_size: int = 32,
         learning_rate: float = 1e-3,
         dropout: float = 0.2,
@@ -330,7 +330,10 @@ def train_model(
         learning_rate: float = 2e-5,
         dropout: float = 0.2,
         max_epochs: int = 50,
-        smiles_emb_dim: int = 224,
+        smiles_emb_dim: int = config.fingerprint_size,
+        poi_emb_dim: int = config.protein_embedding_size,
+        e3_emb_dim: int = config.protein_embedding_size,
+        cell_emb_dim: int = config.cell_embedding_size,
         join_embeddings: Literal['beginning', 'concat', 'sum'] = 'concat',
         smote_k_neighbors:int = 5,
         use_smote: bool = True,
@@ -339,6 +342,8 @@ def train_model(
         fast_dev_run: bool = False,
         use_logger: bool = True,
         logger_name: str = 'protac',
+        enable_checkpointing: bool = False,
+        checkpoint_model_name: str = 'protac',
         disabled_embeddings: List[str] = [],
 ) -> tuple:
     """ Train a PROTAC model using the given datasets and hyperparameters.
@@ -410,13 +415,14 @@ def train_model(
             mode='max',
             verbose=False,
         ),
-        # pl.callbacks.ModelCheckpoint(
-        #     monitor='val_acc',
-        #     mode='max',
-        #     verbose=True,
-        #     filename='{epoch}-{val_metrics_opt_score:.4f}',
-        # ),
     ]
+    if enable_checkpointing:
+        callbacks.append(pl.callbacks.ModelCheckpoint(
+            monitor='val_acc',
+            mode='max',
+            verbose=False,
+            filename=checkpoint_model_name + '-{epoch}-{val_metrics_opt_score:.4f}',
+        ))
     # Define Trainer
     trainer = pl.Trainer(
         logger=logger if use_logger else False,
@@ -424,7 +430,7 @@ def train_model(
         max_epochs=max_epochs,
         fast_dev_run=fast_dev_run,
         enable_model_summary=False,
-        enable_checkpointing=False,
+        enable_checkpointing=enable_checkpointing,
         enable_progress_bar=False,
         devices=1,
         num_nodes=1,
@@ -432,9 +438,9 @@ def train_model(
     model = PROTAC_Model(
         hidden_dim=hidden_dim,
         smiles_emb_dim=smiles_emb_dim,
-        poi_emb_dim=1024,
-        e3_emb_dim=1024,
-        cell_emb_dim=768,
+        poi_emb_dim=poi_emb_dim,
+        e3_emb_dim=e3_emb_dim,
+        cell_emb_dim=cell_emb_dim,
         batch_size=batch_size,
         join_embeddings=join_embeddings,
         dropout=dropout,

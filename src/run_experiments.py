@@ -207,10 +207,11 @@ def get_target_split_indices(active_df: pd.DataFrame, active_col: str, test_spli
 
 def main(
     active_col: str = 'Active (Dmax 0.6, pDC50 6.0)',
-    n_trials: int = 50,
+    n_trials: int = 100,
     fast_dev_run: bool = False,
-    test_split: float = 0.2,
+    test_split: float = 0.1,
     cv_n_splits: int = 5,
+    max_epochs: int = 100,
     run_sklearn: bool = False,
 ):
     """ Train a PROTAC model using the given datasets and hyperparameters.
@@ -287,7 +288,7 @@ def main(
             n_models_for_test=3,
             fast_dev_run=fast_dev_run,
             n_trials=n_trials,
-            max_epochs=10,
+            max_epochs=max_epochs,
             logger_name=f'logs_{experiment_name}',
             active_label=active_col,
             study_filename=f'../reports/study_{experiment_name}.pkl',

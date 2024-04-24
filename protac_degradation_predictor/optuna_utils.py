@@ -73,7 +73,7 @@ def pytorch_model_objective(
     dropout = trial.suggest_float('dropout', *dropout_options)
 
     # Start the CV over the folds
-    X = train_val_df.drop(columns=active_label)
+    X = train_val_df.copy().drop(columns=active_label)
     y = train_val_df[active_label].tolist()
     report = []
     for k, (train_index, val_index) in enumerate(kf.split(X, y, groups)):
@@ -108,11 +108,11 @@ def pytorch_model_objective(
         # At each fold, train and evaluate the Pytorch model
         # Train the model with the current set of hyperparameters
         _, _, metrics = train_model(
-            protein2embedding,
-            cell2embedding,
-            smiles2fp,
-            train_df,
-            val_df,
+            protein2embedding=protein2embedding,
+            cell2embedding=cell2embedding,
+            smiles2fp=smiles2fp,
+            train_df=train_df,
+            val_df=val_df,
             hidden_dim=hidden_dim,
             batch_size=batch_size,
             join_embeddings=join_embeddings,
@@ -223,7 +223,7 @@ def hyperparameter_tuning_and_training(
     test_report = []
     # Retrain N models with the best hyperparameters (measure model uncertainty)
     for i in range(n_models_for_test):
-        pl.seed_everything(42 + i)
+        pl.seed_everything(42 + i + 1)
         _, _, metrics = train_model(
             protein2embedding=protein2embedding,
             cell2embedding=cell2embedding,
@@ -235,9 +235,9 @@ def hyperparameter_tuning_and_training(
             active_label=active_label,
             max_epochs=max_epochs,
             disabled_embeddings=[],
-            logger_name=f'{logger_name}_best_model_{i}',
+            logger_name=f'{logger_name}_best_model_n{i}',
             enable_checkpointing=True,
-            checkpoint_model_name=f'best_model_{split_type}_{i}',
+            checkpoint_model_name=f'best_model_n{i}_{split_type}',
             **study.best_params,
         )
         # Rename the keys in the metrics dictionary
@@ -245,6 +245,9 @@ def hyperparameter_tuning_and_training(
         metrics = {k.replace('train_', 'train_val_'): v for k, v in metrics.items()}
         metrics['model_type'] = 'Pytorch'
         metrics['test_model_id'] = i
+        metrics['test_len'] = len(test_df)
+        metrics['test_active_perc'] = test_df[active_label].sum() / len(test_df)
+        metrics['test_inactive_perc'] = (len(test_df) - test_df[active_label].sum()) / len(test_df)
         test_report.append(metrics.copy())
     test_report = pd.DataFrame(test_report)
 

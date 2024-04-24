@@ -1,4 +1,6 @@
 import warnings
+import pickle
+import logging
 from typing import Literal, List, Tuple, Optional, Dict
 
 from .protac_dataset import PROTAC_Dataset
@@ -125,7 +127,6 @@ class PROTAC_Predictor(nn.Module):
         return x
 
 
-
 class PROTAC_Model(pl.LightningModule):
 
     def __init__(
@@ -218,13 +219,26 @@ class PROTAC_Model(pl.LightningModule):
             '''
         
         # Apply scaling in datasets
-        if self.apply_scaling:
-            use_single_scaler = True if self.join_embeddings == 'beginning' else False
+        self.scalers = None
+        if self.apply_scaling and self.train_dataset is not None:
+            self.initialize_scalers()
+
+    def initialize_scalers(self):
+        """Initialize or reinitialize scalers based on dataset properties."""
+        if self.scalers is None:
+            use_single_scaler = self.join_embeddings == 'beginning'
             self.scalers = self.train_dataset.fit_scaling(use_single_scaler)
+            self.apply_scalers()
+
+    def apply_scalers(self):
+        """Apply scalers to all datasets."""
+        use_single_scaler = self.join_embeddings == 'beginning'
+        if self.train_dataset:
             self.train_dataset.apply_scaling(self.scalers, use_single_scaler)
+        if self.val_dataset:
             self.val_dataset.apply_scaling(self.scalers, use_single_scaler)
-            if self.test_dataset:
-                self.test_dataset.apply_scaling(self.scalers, use_single_scaler)
+        if self.test_dataset:
+            self.test_dataset.apply_scaling(self.scalers, use_single_scaler)
 
     def forward(self, poi_emb, e3_emb, cell_emb, smiles_emb):
         return self.model(poi_emb, e3_emb, cell_emb, smiles_emb)
@@ -316,6 +330,23 @@ class PROTAC_Model(pl.LightningModule):
             batch_size=self.batch_size,
             shuffle=False,
         )
+    
+    def on_save_checkpoint(self, checkpoint):
+        """ Serialize the scalers to the checkpoint. """
+        checkpoint['scalers'] = pickle.dumps(self.scalers)
+    
+    def on_load_checkpoint(self, checkpoint):
+        """Deserialize the scalers from the checkpoint."""
+        if 'scalers' in checkpoint:
+            self.scalers = pickle.loads(checkpoint['scalers'])
+        else:
+            self.scalers = None
+        if self.apply_scaling:
+            if self.scalers is not None:
+                # Re-apply scalers to ensure datasets are scaled
+                self.apply_scalers()
+            else:
+                logging.warning("Scalers not found in checkpoint. Consider re-fitting scalers if necessary.")
 
 
 def train_model(
@@ -421,7 +452,7 @@ def train_model(
             monitor='val_acc',
             mode='max',
             verbose=False,
-            filename=checkpoint_model_name + '-{epoch}-{val_metrics_opt_score:.4f}',
+            filename=checkpoint_model_name + '-{epoch}-{val_acc:.2f}-{val_roc_auc:.3f}',
         ))
     # Define Trainer
     trainer = pl.Trainer(
@@ -455,6 +486,9 @@ def train_model(
         warnings.simplefilter("ignore")
         trainer.fit(model)
     metrics = trainer.validate(model, verbose=False)[0]
+
+    # Add train metrics to metrics
+
     if test_df is not None:
         test_metrics = trainer.test(model, verbose=False)[0]
         metrics.update(test_metrics)
@@ -472,6 +506,15 @@ def load_model(
     Returns:
         PROTAC_Model: The loaded model.
     """
-    model = PROTAC_Model.load_from_checkpoint(ckpt_path)
+    # NOTE: The `map_locat` argument is automatically handled in newer versions
+    # of PyTorch Lightning, but we keep it here for compatibility with older ones.
+    model = PROTAC_Model.load_from_checkpoint(
+        ckpt_path,
+        map_location=torch.device('cpu') if not torch.cuda.is_available() else None,
+    )
+    # NOTE: The following is left as example for eventually re-applying scaling
+    # with other datasets...
+    # if model.apply_scaling:
+    #     model.apply_scalers()
     model.eval()
     return model

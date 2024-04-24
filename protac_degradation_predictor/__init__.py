@@ -5,6 +5,8 @@ from .data_utils import (
     is_active,
 )
 from .pytorch_models import (
+    PROTAC_Predictor,
+    PROTAC_Model,
     train_model,
 )
 from .sklearn_models import (

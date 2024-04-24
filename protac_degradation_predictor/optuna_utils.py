@@ -37,6 +37,7 @@ def pytorch_model_objective(
         train_val_df: pd.DataFrame,
         kf: StratifiedKFold | StratifiedGroupKFold,
         groups: Optional[np.array] = None,
+        test_df: Optional[pd.DataFrame] = None,
         hidden_dim_options: List[int] = [256, 512, 768],
         batch_size_options: List[int] = [8, 16, 32],
         learning_rate_options: Tuple[float, float] = (1e-5, 1e-3),
@@ -107,12 +108,13 @@ def pytorch_model_objective(
 
         # At each fold, train and evaluate the Pytorch model
         # Train the model with the current set of hyperparameters
-        _, _, metrics = train_model(
+        _, trainer, metrics = train_model(
             protein2embedding=protein2embedding,
             cell2embedding=cell2embedding,
             smiles2fp=smiles2fp,
             train_df=train_df,
             val_df=val_df,
+            test_df=test_df,
             hidden_dim=hidden_dim,
             batch_size=batch_size,
             join_embeddings=join_embeddings,
@@ -127,7 +129,9 @@ def pytorch_model_objective(
             active_label=active_label,
             disabled_embeddings=disabled_embeddings,
         )
+        train_metrics = {m: v.item() for m, v in trainer.callback_metrics.items() if 'train' in m}
         stats.update(metrics)
+        stats.update(train_metrics)
         report.append(stats.copy())
 
     # Get the average validation accuracy and ROC AUC accross the folds
@@ -153,6 +157,7 @@ def hyperparameter_tuning_and_training(
         n_models_for_test: int = 3,
         fast_dev_run: bool = False,
         n_trials: int = 50,
+        logger_save_dir: str = 'logs',
         logger_name: str = 'protac_hparam_search',
         active_label: str = 'Active',
         max_epochs: int = 100,
@@ -204,6 +209,7 @@ def hyperparameter_tuning_and_training(
                 train_val_df=train_val_df,
                 kf=kf,
                 groups=groups,
+                test_df=test_df,
                 hidden_dim_options=hidden_dim_options,
                 batch_size_options=batch_size_options,
                 learning_rate_options=learning_rate_options,
@@ -220,21 +226,22 @@ def hyperparameter_tuning_and_training(
     cv_report = pd.DataFrame(study.best_trial.user_attrs['report'])
     hparam_report = pd.DataFrame([study.best_params])
 
-    test_report = []
     # Retrain N models with the best hyperparameters (measure model uncertainty)
+    test_report = []
     for i in range(n_models_for_test):
         pl.seed_everything(42 + i + 1)
-        _, _, metrics = train_model(
+        _, trainer, metrics = train_model(
             protein2embedding=protein2embedding,
             cell2embedding=cell2embedding,
             smiles2fp=smiles2fp,
             train_df=train_val_df,
             val_df=test_df,
-            use_logger=True,
             fast_dev_run=fast_dev_run,
             active_label=active_label,
             max_epochs=max_epochs,
             disabled_embeddings=[],
+            use_logger=True,
+            logger_save_dir=logger_save_dir,
             logger_name=f'{logger_name}_best_model_n{i}',
             enable_checkpointing=True,
             checkpoint_model_name=f'best_model_n{i}_{split_type}',
@@ -242,12 +249,20 @@ def hyperparameter_tuning_and_training(
         )
         # Rename the keys in the metrics dictionary
         metrics = {k.replace('val_', 'test_'): v for k, v in metrics.items()}
-        metrics = {k.replace('train_', 'train_val_'): v for k, v in metrics.items()}
         metrics['model_type'] = 'Pytorch'
         metrics['test_model_id'] = i
         metrics['test_len'] = len(test_df)
         metrics['test_active_perc'] = test_df[active_label].sum() / len(test_df)
         metrics['test_inactive_perc'] = (len(test_df) - test_df[active_label].sum()) / len(test_df)
+
+        # Add the training metrics        
+        train_metrics = {m.replace('train_', 'train_val_'): v.item() for m, v in trainer.callback_metrics.items() if 'train' in m}
+        logging.info(f'Training metrics: {train_metrics}')
+        logging.info(f'Training trainer.logged_metrics: {trainer.logged_metrics}')
+        logging.info(f'Training trainer.callback_metrics: {trainer.callback_metrics}')
+        
+        metrics.update(train_metrics)
+
         test_report.append(metrics.copy())
     test_report = pd.DataFrame(test_report)
 
@@ -266,16 +281,21 @@ def hyperparameter_tuning_and_training(
             fast_dev_run=fast_dev_run,
             active_label=active_label,
             max_epochs=max_epochs,
-            use_logger=True,
+            use_logger=False,
+            logger_save_dir=logger_save_dir,
             logger_name=f'{logger_name}_disabled-{"-".join(disabled_embeddings)}',
             disabled_embeddings=disabled_embeddings,
             **study.best_params,
         )
         # Rename the keys in the metrics dictionary
         metrics = {k.replace('val_', 'test_'): v for k, v in metrics.items()}
-        metrics = {k.replace('train_', 'train_val_'): v for k, v in metrics.items()}
         metrics['disabled_embeddings'] = 'disabled ' + ' '.join(disabled_embeddings)
         metrics['model_type'] = 'Pytorch'
+
+        # Add the training metrics        
+        train_metrics = {m.replace('train_', 'train_val_'): v.item() for m, v in trainer.callback_metrics.items() if 'train' in m}
+        metrics.update(train_metrics)
+
         ablation_report.append(metrics.copy())
     ablation_report = pd.DataFrame(ablation_report)
 

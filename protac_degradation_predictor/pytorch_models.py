@@ -372,6 +372,7 @@ def train_model(
         active_label: str = 'Active',
         fast_dev_run: bool = False,
         use_logger: bool = True,
+        logger_save_dir: str = '../logs',
         logger_name: str = 'protac',
         enable_checkpointing: bool = False,
         checkpoint_model_name: str = 'protac',
@@ -423,15 +424,29 @@ def train_model(
             smiles2fp,
             active_label=active_label,
         )
-    logger = pl.loggers.TensorBoardLogger(
-        save_dir='../logs',
-        name=logger_name,
-    )
+    loggers = [
+        pl.loggers.TensorBoardLogger(
+            save_dir=logger_save_dir,
+            version=logger_name,
+            name=logger_name,
+        ),
+        pl.loggers.CSVLogger(
+            save_dir=logger_save_dir,
+            version=logger_name,
+            name=logger_name,
+        ),
+    ]
     callbacks = [
         pl.callbacks.EarlyStopping(
             monitor='train_loss',
             patience=10,
             mode='min',
+            verbose=False,
+        ),
+        pl.callbacks.EarlyStopping(
+            monitor='train_acc',
+            patience=10,
+            mode='max',
             verbose=False,
         ),
         pl.callbacks.EarlyStopping(
@@ -456,7 +471,7 @@ def train_model(
         ))
     # Define Trainer
     trainer = pl.Trainer(
-        logger=logger if use_logger else False,
+        logger=loggers if use_logger else False,
         callbacks=callbacks,
         max_epochs=max_epochs,
         fast_dev_run=fast_dev_run,

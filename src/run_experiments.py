@@ -8,6 +8,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import protac_degradation_predictor as pdp
 
+import pytorch_lightning as pl
 from rdkit import Chem
 from rdkit.Chem import AllChem
 from rdkit import DataStructs
@@ -222,6 +223,8 @@ def main(
         n_splits (int): The number of cross-validation splits.
         fast_dev_run (bool): Whether to run a fast development run.
     """
+    pl.seed_everything(42)
+
     # Set the Column to Predict
     active_name = active_col.replace(' ', '_').replace('(', '').replace(')', '').replace(',', '')
 
@@ -255,7 +258,7 @@ def main(
     cell2embedding = pdp.load_cell2embedding('../data/cell2embedding.pkl')
 
     # Cross-Validation Training
-    report = []
+    reports = defaultdict(list)
     for split_type, indeces in test_indeces.items():
         test_df = active_df.loc[indeces].copy()
         train_val_df = active_df[~active_df.index.isin(test_df.index)].copy()
@@ -276,7 +279,7 @@ def main(
 
         # Start the experiment
         experiment_name = f'{active_name}_test_split_{test_split}_{split_type}'
-        reports = pdp.hyperparameter_tuning_and_training(
+        optuna_reports = pdp.hyperparameter_tuning_and_training(
             protein2embedding=protein2embedding,
             cell2embedding=cell2embedding,
             smiles2fp=smiles2fp,
@@ -289,16 +292,26 @@ def main(
             fast_dev_run=fast_dev_run,
             n_trials=n_trials,
             max_epochs=max_epochs,
+            logger_save_dir='../logs',
             logger_name=f'logs_{experiment_name}',
             active_label=active_col,
             study_filename=f'../reports/study_{experiment_name}.pkl',
         )
-        cv_report, hparam_report, test_report, ablation_report = reports
+        cv_report, hparam_report, test_report, ablation_report = optuna_reports
 
         # Save the reports to file
         for report, filename in zip([cv_report, hparam_report, test_report, ablation_report], ['cv_train', 'hparams', 'test', 'ablation']):
             report.to_csv(f'../reports/report_{filename}_{experiment_name}.csv', index=False)
 
+        reports['cv'].append(cv_report.copy())
+        reports['hparam'].append(hparam_report.copy())
+        reports['test'].append(test_report.copy())
+        reports['ablation'].append(ablation_report.copy())
+    
+    # Save the reports to file after concatenating them
+    for key, report in reports.items():
+        report = pd.concat(report)
+        report.to_csv(f'../reports/report_{key}_{active_name}_test_split_{test_split}.csv', index=False)
 
 
 

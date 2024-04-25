@@ -16,6 +16,10 @@ from .optuna_utils import (
     hyperparameter_tuning_and_training,
     hyperparameter_tuning_and_training_sklearn,
 )
+from .protac_degradation_predictor import (
+    get_protac_active_proba,
+    is_protac_active,
+)
 
 __version__ = "0.0.1"
 __author__ = "Stefano Ribes"

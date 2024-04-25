@@ -17,5 +17,5 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     include_package_data=True,
-    package_data={"": ["data/*.h5", "data/*.pkl", "data/*.csv"]},
+    package_data={"": ["data/*.h5", "data/*.pkl", "data/*.csv", "models/*.ckpt"]},
 )

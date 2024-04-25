@@ -23,6 +23,7 @@ from torchmetrics import (
     MetricCollection,
 )
 from imblearn.over_sampling import SMOTE
+from sklearn.preprocessing import StandardScaler
 
 
 class PROTAC_Predictor(nn.Module):
@@ -239,8 +240,46 @@ class PROTAC_Model(pl.LightningModule):
             self.val_dataset.apply_scaling(self.scalers, use_single_scaler)
         if self.test_dataset:
             self.test_dataset.apply_scaling(self.scalers, use_single_scaler)
+    
+    def scale_tensor(
+            self,
+            tensor: torch.Tensor,
+            scaler: StandardScaler,
+    ) -> torch.Tensor:
+        """Scale a tensor using a scaler. This is done to avoid using numpy
+        arrays (and stay on the same device).
+        
+        Args:
+            tensor (torch.Tensor): The tensor to scale.
+            scaler (StandardScaler): The scaler to use.
 
-    def forward(self, poi_emb, e3_emb, cell_emb, smiles_emb):
+        Returns:
+            torch.Tensor: The scaled tensor.
+        """
+        tensor = tensor.float()
+        if scaler.with_mean:
+            tensor -= torch.tensor(scaler.mean_, dtype=tensor.dtype, device=tensor.device)
+        if scaler.with_std:
+            tensor /= torch.tensor(scaler.scale_, dtype=tensor.dtype, device=tensor.device)
+        return tensor
+
+    def forward(self, poi_emb, e3_emb, cell_emb, smiles_emb, prescaled_embeddings=True):
+        if not prescaled_embeddings:
+            if self.apply_scaling:
+                if self.join_embeddings == 'beginning':
+                    embeddings = self.scale_tensor(
+                        torch.hstack([smiles_emb, poi_emb, e3_emb, cell_emb]),
+                        self.scalers,
+                    )
+                    smiles_emb = embeddings[:, :self.smiles_emb_dim]
+                    poi_emb = embeddings[:, self.smiles_emb_dim:self.smiles_emb_dim+self.poi_emb_dim]
+                    e3_emb = embeddings[:, self.smiles_emb_dim+self.poi_emb_dim:self.smiles_emb_dim+2*self.poi_emb_dim]
+                    cell_emb = embeddings[:, -self.cell_emb_dim:]
+                else:
+                    poi_emb = self.scale_tensor(poi_emb, self.scalers['Uniprot'])
+                    e3_emb = self.scale_tensor(e3_emb, self.scalers['E3 Ligase Uniprot'])
+                    cell_emb = self.scale_tensor(cell_emb, self.scalers['Cell Line Identifier'])
+                    smiles_emb = self.scale_tensor(smiles_emb, self.scalers['Smiles'])
         return self.model(poi_emb, e3_emb, cell_emb, smiles_emb)
 
     def step(self, batch, batch_idx, stage):
@@ -451,7 +490,7 @@ def train_model(
         ),
         pl.callbacks.EarlyStopping(
             monitor='val_loss',
-            patience=5,
+            patience=10, # Original: 5
             mode='min',
             verbose=False,
         ),

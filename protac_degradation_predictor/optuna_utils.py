@@ -2,7 +2,7 @@ import os
 from typing import Literal, List, Tuple, Optional, Dict
 import logging
 
-from .pytorch_models import train_model
+from .pytorch_models import train_model, PROTAC_Model
 from .sklearn_models import (
     train_sklearn_model,
     suggest_random_forest,
@@ -11,6 +11,7 @@ from .sklearn_models import (
     suggest_gradient_boosting,
 )
 
+import torch
 import optuna
 from optuna.samplers import TPESampler
 import joblib
@@ -27,6 +28,56 @@ from sklearn.model_selection import (
 )
 import numpy as np
 import pytorch_lightning as pl
+from torchmetrics import (
+    Accuracy,
+    AUROC,
+    Precision,
+    Recall,
+    F1Score,
+)
+
+
+def get_dataframe_stats(
+        train_df = None,
+        val_df = None,
+        test_df = None,
+        active_label = 'Active',
+    ) -> Dict:
+    """ Get some statistics from the dataframes.
+    
+    Args:
+        train_df (pd.DataFrame): The training set.
+        val_df (pd.DataFrame): The validation set.
+        test_df (pd.DataFrame): The test set.
+    """
+    stats = {}
+    if train_df is not None:
+        stats['train_len'] = len(train_df)
+        stats['train_active_perc'] = train_df[active_label].sum() / len(train_df)
+        stats['train_inactive_perc'] = (len(train_df) - train_df[active_label].sum()) / len(train_df)
+    if val_df is not None:
+        stats['val_len'] = len(val_df)
+        stats['val_active_perc'] = val_df[active_label].sum() / len(val_df)
+        stats['val_inactive_perc'] = (len(val_df) - val_df[active_label].sum()) / len(val_df)
+    if test_df is not None:
+        stats['test_len'] = len(test_df)
+        stats['test_active_perc'] = test_df[active_label].sum() / len(test_df)
+        stats['test_inactive_perc'] = (len(test_df) - test_df[active_label].sum()) / len(test_df)
+    if train_df is not None and val_df is not None:
+        leaking_uniprot = list(set(train_df['Uniprot']).intersection(set(val_df['Uniprot'])))
+        leaking_smiles = list(set(train_df['Smiles']).intersection(set(val_df['Smiles'])))
+        stats['num_leaking_uniprot_train_val'] = len(leaking_uniprot)
+        stats['num_leaking_smiles_train_val'] = len(leaking_smiles)
+        stats['perc_leaking_uniprot_train_val'] = len(train_df[train_df['Uniprot'].isin(leaking_uniprot)]) / len(train_df)
+        stats['perc_leaking_smiles_train_val'] = len(train_df[train_df['Smiles'].isin(leaking_smiles)]) / len(train_df)
+    if train_df is not None and test_df is not None:
+        leaking_uniprot = list(set(train_df['Uniprot']).intersection(set(test_df['Uniprot'])))
+        leaking_smiles = list(set(train_df['Smiles']).intersection(set(test_df['Smiles'])))
+        stats['num_leaking_uniprot_train_test'] = len(leaking_uniprot)
+        stats['num_leaking_smiles_train_test'] = len(leaking_smiles)
+        stats['perc_leaking_uniprot_train_test'] = len(train_df[train_df['Uniprot'].isin(leaking_uniprot)]) / len(train_df)
+        stats['perc_leaking_smiles_train_test'] = len(train_df[train_df['Smiles'].isin(leaking_smiles)]) / len(train_df)
+    return stats
 
 
 def pytorch_model_objective(
@@ -77,15 +128,15 @@ def pytorch_model_objective(
     X = train_val_df.copy().drop(columns=active_label)
     y = train_val_df[active_label].tolist()
     report = []
+    val_preds = []
+    test_preds = []
     for k, (train_index, val_index) in enumerate(kf.split(X, y, groups)):
         logging.info(f'Fold {k + 1}/{kf.get_n_splits()}')
         # Get the train and val sets
         train_df = train_val_df.iloc[train_index]
         val_df = train_val_df.iloc[val_index]
 
-        # Check for data leakage and get some statistics
-        leaking_uniprot = list(set(train_df['Uniprot']).intersection(set(val_df['Uniprot'])))
-        leaking_smiles = list(set(train_df['Smiles']).intersection(set(val_df['Smiles'])))
+        # Get some statistics from the dataframes
         stats = {
             'model_type': 'Pytorch',
             'fold': k,
@@ -93,22 +144,15 @@ def pytorch_model_objective(
             'val_len': len(val_df),
             'train_perc': len(train_df) / len(train_val_df),
             'val_perc': len(val_df) / len(train_val_df),
-            'train_active_perc': train_df[active_label].sum() / len(train_df),
-            'train_inactive_perc': (len(train_df) - train_df[active_label].sum()) / len(train_df),
-            'val_active_perc': val_df[active_label].sum() / len(val_df),
-            'val_inactive_perc': (len(val_df) - val_df[active_label].sum()) / len(val_df),
-            'num_leaking_uniprot': len(leaking_uniprot),
-            'num_leaking_smiles': len(leaking_smiles),
-            'train_leaking_uniprot_perc': len(train_df[train_df['Uniprot'].isin(leaking_uniprot)]) / len(train_df),
-            'train_leaking_smiles_perc': len(train_df[train_df['Smiles'].isin(leaking_smiles)]) / len(train_df),
         }
+        stats.update(get_dataframe_stats(train_df, val_df, test_df, active_label))
         if groups is not None:
             stats['train_unique_groups'] = len(np.unique(groups[train_index]))
             stats['val_unique_groups'] = len(np.unique(groups[val_index]))
 
         # At each fold, train and evaluate the Pytorch model
         # Train the model with the current set of hyperparameters
-        _, trainer, metrics = train_model(
+        ret = train_model(
             protein2embedding=protein2embedding,
             cell2embedding=cell2embedding,
             smiles2fp=smiles2fp,
@@ -127,22 +171,47 @@ def pytorch_model_objective(
             use_logger=False,
             fast_dev_run=fast_dev_run,
             active_label=active_label,
+            return_predictions=True,
             disabled_embeddings=disabled_embeddings,
         )
+        if test_df is not None:
+            _, trainer, metrics, val_pred, test_pred = ret
+            test_preds.append(test_pred)
+            logging.info(f'Test predictions: {test_pred}')
+        else:
+            _, trainer, metrics, val_pred = ret
         train_metrics = {m: v.item() for m, v in trainer.callback_metrics.items() if 'train' in m}
         stats.update(metrics)
         stats.update(train_metrics)
         report.append(stats.copy())
-
-    # Get the average validation accuracy and ROC AUC accross the folds
-    val_acc = np.mean([r['val_acc'] for r in report])
-    val_roc_auc = np.mean([r['val_roc_auc'] for r in report])
+        val_preds.append(val_pred)
 
     # Save the report in the trial
     trial.set_user_attr('report', report)
-    
+
+    # Get the majority vote for the test predictions
+    if test_df is not None:
+        # Get the majority vote for the test predictions
+        test_preds = torch.stack(test_preds)
+        test_preds, _ = torch.mode(test_preds, dim=0)
+        y = torch.tensor(test_df[active_label].tolist())
+        # Measure the test accuracy and ROC AUC
+        majority_vote_metrics = {
+            'test_acc': Accuracy(task='binary')(test_preds, y).item(),
+            'test_roc_auc': AUROC(task='binary')(test_preds, y).item(),
+            'test_precision': Precision(task='binary')(test_preds, y).item(),
+            'test_recall': Recall(task='binary')(test_preds, y).item(),
+            'test_f1': F1Score(task='binary')(test_preds, y).item(),
+        }
+        majority_vote_metrics.update(get_dataframe_stats(train_df, val_df, test_df, active_label))
+        trial.set_user_attr('majority_vote_metrics', majority_vote_metrics)
+        logging.info(f'Majority vote metrics: {majority_vote_metrics}')
+
+    # Get the average validation accuracy and ROC AUC accross the folds
+    val_roc_auc = np.mean([r['val_roc_auc'] for r in report])
+
     # Optuna aims to minimize the pytorch_model_objective
-    return - val_acc - val_roc_auc
+    return - val_roc_auc
 
 
 def hyperparameter_tuning_and_training(
@@ -162,6 +231,7 @@ def hyperparameter_tuning_and_training(
         active_label: str = 'Active',
         max_epochs: int = 100,
         study_filename: Optional[str] = None,
+        force_study: bool = False,
 ) -> tuple:
     """ Hyperparameter tuning and training of a PROTAC model.
     
@@ -181,10 +251,11 @@ def hyperparameter_tuning_and_training(
     pl.seed_everything(42)
 
     # Define the search space
-    hidden_dim_options = [256, 512, 768]
-    batch_size_options = [8, 16, 32]
+    hidden_dim_options = [32, 64, 128, 256, 512, 768]
+    batch_size_options = [4, 8, 16, 32, 64, 128]
     learning_rate_options = (1e-5, 1e-3) # min and max values for loguniform distribution
     smote_k_neighbors_options = list(range(3, 16))
+    dropout_options = (0.1, 0.9)
 
     # Set the verbosity of Optuna
     optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -193,13 +264,13 @@ def hyperparameter_tuning_and_training(
     study = optuna.create_study(direction='minimize', sampler=sampler)
 
     study_loaded = False
-    if study_filename:
+    if study_filename and not force_study:
         if os.path.exists(study_filename):
             study = joblib.load(study_filename)
             study_loaded = True
             logging.info(f'Loaded study from {study_filename}')
 
-    if not study_loaded:
+    if not study_loaded or force_study:
         study.optimize(
             lambda trial: pytorch_model_objective(
                 trial=trial,
@@ -214,6 +285,7 @@ def hyperparameter_tuning_and_training(
                 batch_size_options=batch_size_options,
                 learning_rate_options=learning_rate_options,
                 smote_k_neighbors_options=smote_k_neighbors_options,
+                dropout_options=dropout_options,
                 fast_dev_run=fast_dev_run,
                 active_label=active_label,
                 max_epochs=max_epochs,
@@ -228,9 +300,11 @@ def hyperparameter_tuning_and_training(
 
     # Retrain N models with the best hyperparameters (measure model uncertainty)
     test_report = []
+    test_preds = []
+    dfs_stats = get_dataframe_stats(train_val_df, test_df=test_df, active_label=active_label)
     for i in range(n_models_for_test):
         pl.seed_everything(42 + i + 1)
-        _, trainer, metrics = train_model(
+        _, trainer, metrics, test_pred = train_model(
             protein2embedding=protein2embedding,
             cell2embedding=cell2embedding,
             smiles2fp=smiles2fp,
@@ -245,29 +319,52 @@ def hyperparameter_tuning_and_training(
             logger_name=f'{logger_name}_best_model_n{i}',
             enable_checkpointing=True,
             checkpoint_model_name=f'best_model_n{i}_{split_type}',
+            return_predictions=True,
             **study.best_params,
         )
         # Rename the keys in the metrics dictionary
         metrics = {k.replace('val_', 'test_'): v for k, v in metrics.items()}
         metrics['model_type'] = 'Pytorch'
         metrics['test_model_id'] = i
-        metrics['test_len'] = len(test_df)
-        metrics['test_active_perc'] = test_df[active_label].sum() / len(test_df)
-        metrics['test_inactive_perc'] = (len(test_df) - test_df[active_label].sum()) / len(test_df)
+        metrics.update(dfs_stats)
 
         # Add the training metrics        
-        train_metrics = {m.replace('train_', 'train_val_'): v.item() for m, v in trainer.callback_metrics.items() if 'train' in m}
+        train_metrics = {m: v.item() for m, v in trainer.callback_metrics.items() if 'train' in m}
         logging.info(f'Training metrics: {train_metrics}')
         logging.info(f'Training trainer.logged_metrics: {trainer.logged_metrics}')
         logging.info(f'Training trainer.callback_metrics: {trainer.callback_metrics}')
         
         metrics.update(train_metrics)
-
         test_report.append(metrics.copy())
+        test_preds.append(test_pred)
     test_report = pd.DataFrame(test_report)
+
+    # Get the majority vote for the test predictions
+    test_preds = torch.stack(test_preds)
+    test_preds, _ = torch.mode(test_preds, dim=0)
+    y = torch.tensor(test_df[active_label].tolist())
+    # Measure the test accuracy and ROC AUC
+    majority_vote_metrics = {
+        'cv_models': False,
+        'test_acc': Accuracy(task='binary')(test_preds, y).item(),
+        'test_roc_auc': AUROC(task='binary')(test_preds, y).item(),
+        'test_precision': Precision(task='binary')(test_preds, y).item(),
+        'test_recall': Recall(task='binary')(test_preds, y).item(),
+        'test_f1': F1Score(task='binary')(test_preds, y).item(),
+    }
+    majority_vote_metrics.update(get_dataframe_stats(train_val_df, test_df=test_df, active_label=active_label))
+    majority_vote_metrics_cv = study.best_trial.user_attrs['majority_vote_metrics']
+    majority_vote_metrics_cv['cv_models'] = True
+    majority_vote_report = pd.DataFrame([
+        majority_vote_metrics,
+        majority_vote_metrics_cv,
+    ])
+    majority_vote_report['model_type'] = 'Pytorch'
+    majority_vote_report['split_type'] = split_type
 
     # Ablation study: disable embeddings at a time
     ablation_report = []
+    dfs_stats = get_dataframe_stats(train_val_df, test_df=test_df, active_label=active_label)
     for disabled_embeddings in [['e3'], ['poi'], ['cell'], ['smiles'], ['e3', 'cell'], ['poi', 'e3', 'cell']]:
         logging.info('-' * 100)
         logging.info(f'Ablation study with disabled embeddings: {disabled_embeddings}')
@@ -291,9 +388,10 @@ def hyperparameter_tuning_and_training(
         metrics = {k.replace('val_', 'test_'): v for k, v in metrics.items()}
         metrics['disabled_embeddings'] = 'disabled ' + ' '.join(disabled_embeddings)
         metrics['model_type'] = 'Pytorch'
+        metrics.update(dfs_stats)
 
         # Add the training metrics        
-        train_metrics = {m.replace('train_', 'train_val_'): v.item() for m, v in trainer.callback_metrics.items() if 'train' in m}
+        train_metrics = {m: v.item() for m, v in trainer.callback_metrics.items() if 'train' in m}
         metrics.update(train_metrics)
 
         ablation_report.append(metrics.copy())
@@ -304,7 +402,14 @@ def hyperparameter_tuning_and_training(
         report['split_type'] = split_type
 
     # Return the reports
-    return cv_report, hparam_report, test_report, ablation_report
+    ret = {
+        'cv_report': cv_report,
+        'hparam_report': hparam_report,
+        'test_report': test_report,
+        'ablation_report': ablation_report,
+        'majority_vote_report': majority_vote_report,
+    }
+    return ret
 
 
 def sklearn_model_objective(

@@ -1,0 +1,2 @@
+hidden_dim,batch_size,learning_rate,join_embeddings,smote_k_neighbors,use_smote,apply_scaling,dropout,split_type
+768,16,5.265532327544801e-05,concat,13,True,True,0.1427004529020413,e3_ligase

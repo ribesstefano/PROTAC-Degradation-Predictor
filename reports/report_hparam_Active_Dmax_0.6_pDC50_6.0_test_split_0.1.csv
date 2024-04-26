@@ -1,0 +1,5 @@
+hidden_dim,batch_size,learning_rate,join_embeddings,smote_k_neighbors,use_smote,apply_scaling,dropout,split_type
+768,8,1.843233973932415e-05,concat,10,False,True,0.11257777663560328,random
+768,16,5.265532327544801e-05,concat,13,True,True,0.1427004529020413,e3_ligase
+768,32,4.7765327657476164e-05,concat,4,False,True,0.161352127988543,tanimoto
+512,32,1.0549183286920568e-05,sum,6,False,True,0.2629572558965121,uniprot

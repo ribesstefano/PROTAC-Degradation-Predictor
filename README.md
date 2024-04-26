@@ -40,3 +40,7 @@ print(f'The given PROTAC is: {"active" if active_protac else "inactive"}')
 
 > If you're coming from my [thesis repo](https://github.com/ribesstefano/Machine-Learning-for-Predicting-Targeted-Protein-Degradation), I just wanted to create a separate and "less generic" repo for fast prototyping new ideas.
 > Stefano.
+
+
+
+> Why haven't you trained on more (i.e., the whole) data? We did, and we might just need _way_ more data to get better results...

@@ -3,6 +3,7 @@ import sys
 from collections import defaultdict
 import warnings
 import logging
+from typing import Literal
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -214,6 +215,8 @@ def main(
     cv_n_splits: int = 5,
     max_epochs: int = 100,
     run_sklearn: bool = False,
+    force_study: bool = False,
+    experiments: str | Literal['all', 'random', 'e3_ligase', 'tanimoto', 'uniprot'] = 'all',
 ):
     """ Train a PROTAC model using the given datasets and hyperparameters.
     
@@ -244,10 +247,15 @@ def main(
     ## Get the test sets
     test_indeces = {}
     active_df = protac_df[protac_df[active_col].notna()].copy()
-    test_indeces['random'] = get_random_split_indices(active_df, test_split)
-    test_indeces['e3_ligase'] = get_e3_ligase_split_indices(active_df)
-    test_indeces['tanimoto'] = get_tanimoto_split_indices(active_df, active_col, test_split)
-    test_indeces['uniprot'] = get_target_split_indices(active_df, active_col, test_split)
+    
+    if experiments == 'random' or experiments == 'all':
+        test_indeces['random'] = get_random_split_indices(active_df, test_split)
+    if experiments == 'uniprot' or experiments == 'all':
+        test_indeces['uniprot'] = get_target_split_indices(active_df, active_col, test_split)
+    if experiments == 'e3_ligase' or experiments == 'all':
+        test_indeces['e3_ligase'] = get_e3_ligase_split_indices(active_df)
+    if experiments == 'tanimoto' or experiments == 'all':
+        test_indeces['tanimoto'] = get_tanimoto_split_indices(active_df, active_col, test_split)
     
     # Make directory ../reports if it does not exist
     if not os.path.exists('../reports'):
@@ -296,22 +304,18 @@ def main(
             logger_name=f'logs_{experiment_name}',
             active_label=active_col,
             study_filename=f'../reports/study_{experiment_name}.pkl',
+            force_study=force_study,
         )
-        cv_report, hparam_report, test_report, ablation_report = optuna_reports
 
         # Save the reports to file
-        for report, filename in zip([cv_report, hparam_report, test_report, ablation_report], ['cv_train', 'hparams', 'test', 'ablation']):
-            report.to_csv(f'../reports/report_{filename}_{experiment_name}.csv', index=False)
-
-        reports['cv'].append(cv_report.copy())
-        reports['hparam'].append(hparam_report.copy())
-        reports['test'].append(test_report.copy())
-        reports['ablation'].append(ablation_report.copy())
+        for report_name, report in optuna_reports.items():
+            report.to_csv(f'../reports/report_{report_name}_{experiment_name}.csv', index=False)
+            reports[report_name].append(report.copy())
     
     # Save the reports to file after concatenating them
-    for key, report in reports.items():
+    for report_name, report in reports.items():
         report = pd.concat(report)
-        report.to_csv(f'../reports/report_{key}_{active_name}_test_split_{test_split}.csv', index=False)
+        report.to_csv(f'../reports/report_{report_name}_{active_name}_test_split_{test_split}.csv', index=False)
 
 
 

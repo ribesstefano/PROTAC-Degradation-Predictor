@@ -315,26 +315,6 @@ class PROTAC_Model(pl.LightningModule):
         e3_emb = batch['e3_emb']
         cell_emb = batch['cell_emb']
         smiles_emb = batch['smiles_emb']
-
-        if self.apply_scaling:
-            if self.join_embeddings == 'beginning':
-                embeddings = np.hstack([
-                    np.array(smiles_emb.tolist()),
-                    np.array(poi_emb.tolist()),
-                    np.array(e3_emb.tolist()),
-                    np.array(cell_emb.tolist()),
-                ])
-                embeddings = self.scalers.transform(embeddings)
-                smiles_emb = embeddings[:, :self.smiles_emb_dim]
-                poi_emb = embeddings[:, self.smiles_emb_dim:self.smiles_emb_dim+self.poi_emb_dim]
-                e3_emb = embeddings[:, self.smiles_emb_dim+self.poi_emb_dim:self.smiles_emb_dim+2*self.poi_emb_dim]
-                cell_emb = embeddings[:, -self.cell_emb_dim:]
-            else:
-                poi_emb = self.scalers['Uniprot'].transform(poi_emb)
-                e3_emb = self.scalers['E3 Ligase Uniprot'].transform(e3_emb)
-                cell_emb = self.scalers['Cell Line Identifier'].transform(cell_emb)
-                smiles_emb = self.scalers['Smiles'].transform(smiles_emb)
-
         y_hat = self.forward(poi_emb, e3_emb, cell_emb, smiles_emb)
         return torch.sigmoid(y_hat)
 
@@ -416,6 +396,7 @@ def train_model(
         enable_checkpointing: bool = False,
         checkpoint_model_name: str = 'protac',
         disabled_embeddings: List[str] = [],
+        return_predictions: bool = False,
 ) -> tuple:
     """ Train a PROTAC model using the given datasets and hyperparameters.
     
@@ -540,12 +521,19 @@ def train_model(
         warnings.simplefilter("ignore")
         trainer.fit(model)
     metrics = trainer.validate(model, verbose=False)[0]
-
-    # Add train metrics to metrics
-
+    # Add test metrics to metrics
     if test_df is not None:
         test_metrics = trainer.test(model, verbose=False)[0]
         metrics.update(test_metrics)
+    if return_predictions:
+        val_dl = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
+        val_pred = trainer.predict(model, val_dl)
+        val_pred = torch.concat(trainer.predict(model, val_dl)).squeeze()
+        if test_df is not None:
+            test_dl = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
+            test_pred = torch.concat(trainer.predict(model, test_dl)).squeeze()
+            return model, trainer, metrics, val_pred, test_pred
+        return model, trainer, metrics, val_pred
     return model, trainer, metrics
 
 

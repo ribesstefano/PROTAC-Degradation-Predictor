@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 class Config:
     # Embeddings information
     morgan_radius: int = 15
-    fingerprint_size: int = 224
+    fingerprint_size: int = 256 # 224
     protein_embedding_size: int = 1024
     cell_embedding_size: int = 768
 

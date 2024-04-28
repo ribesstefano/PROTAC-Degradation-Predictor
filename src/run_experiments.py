@@ -309,15 +309,8 @@ def main(
 
         # Save the reports to file
         for report_name, report in optuna_reports.items():
-            report.to_csv(f'../reports/report_{report_name}_{experiment_name}.csv', index=False)
+            report.to_csv(f'../reports/{report_name}_{experiment_name}.csv', index=False)
             reports[report_name].append(report.copy())
-    
-    # Save the reports to file after concatenating them
-    for report_name, report in reports.items():
-        report = pd.concat(report)
-        report.to_csv(f'../reports/report_{report_name}_{active_name}_test_split_{test_split}.csv', index=False)
-
-
 
         # # Start the CV over the folds
         # X = train_val_df.drop(columns=active_col)

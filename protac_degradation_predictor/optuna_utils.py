@@ -118,7 +118,6 @@ def pytorch_model_objective(
     hidden_dim = trial.suggest_categorical('hidden_dim', hidden_dim_options)
     batch_size = trial.suggest_categorical('batch_size', batch_size_options)
     learning_rate = trial.suggest_float('learning_rate', *learning_rate_options, log=True)
-    join_embeddings = trial.suggest_categorical('join_embeddings', ['beginning', 'concat', 'sum'])
     smote_k_neighbors = trial.suggest_categorical('smote_k_neighbors', smote_k_neighbors_options)
     use_smote = trial.suggest_categorical('use_smote', [True, False])
     apply_scaling = trial.suggest_categorical('apply_scaling', [True, False])
@@ -161,7 +160,6 @@ def pytorch_model_objective(
             test_df=test_df,
             hidden_dim=hidden_dim,
             batch_size=batch_size,
-            join_embeddings=join_embeddings,
             learning_rate=learning_rate,
             dropout=dropout,
             max_epochs=max_epochs,
@@ -177,7 +175,6 @@ def pytorch_model_objective(
         if test_df is not None:
             _, trainer, metrics, val_pred, test_pred = ret
             test_preds.append(test_pred)
-            logging.info(f'Test predictions: {test_pred}')
         else:
             _, trainer, metrics, val_pred = ret
         train_metrics = {m: v.item() for m, v in trainer.callback_metrics.items() if 'train' in m}
@@ -190,7 +187,7 @@ def pytorch_model_objective(
     trial.set_user_attr('report', report)
 
     # Get the majority vote for the test predictions
-    if test_df is not None:
+    if test_df is not None and not fast_dev_run:
         # Get the majority vote for the test predictions
         test_preds = torch.stack(test_preds)
         test_preds, _ = torch.mode(test_preds, dim=0)
@@ -340,27 +337,28 @@ def hyperparameter_tuning_and_training(
     test_report = pd.DataFrame(test_report)
 
     # Get the majority vote for the test predictions
-    test_preds = torch.stack(test_preds)
-    test_preds, _ = torch.mode(test_preds, dim=0)
-    y = torch.tensor(test_df[active_label].tolist())
-    # Measure the test accuracy and ROC AUC
-    majority_vote_metrics = {
-        'cv_models': False,
-        'test_acc': Accuracy(task='binary')(test_preds, y).item(),
-        'test_roc_auc': AUROC(task='binary')(test_preds, y).item(),
-        'test_precision': Precision(task='binary')(test_preds, y).item(),
-        'test_recall': Recall(task='binary')(test_preds, y).item(),
-        'test_f1': F1Score(task='binary')(test_preds, y).item(),
-    }
-    majority_vote_metrics.update(get_dataframe_stats(train_val_df, test_df=test_df, active_label=active_label))
-    majority_vote_metrics_cv = study.best_trial.user_attrs['majority_vote_metrics']
-    majority_vote_metrics_cv['cv_models'] = True
-    majority_vote_report = pd.DataFrame([
-        majority_vote_metrics,
-        majority_vote_metrics_cv,
-    ])
-    majority_vote_report['model_type'] = 'Pytorch'
-    majority_vote_report['split_type'] = split_type
+    if not fast_dev_run:
+        test_preds = torch.stack(test_preds)
+        test_preds, _ = torch.mode(test_preds, dim=0)
+        y = torch.tensor(test_df[active_label].tolist())
+        # Measure the test accuracy and ROC AUC
+        majority_vote_metrics = {
+            'cv_models': False,
+            'test_acc': Accuracy(task='binary')(test_preds, y).item(),
+            'test_roc_auc': AUROC(task='binary')(test_preds, y).item(),
+            'test_precision': Precision(task='binary')(test_preds, y).item(),
+            'test_recall': Recall(task='binary')(test_preds, y).item(),
+            'test_f1': F1Score(task='binary')(test_preds, y).item(),
+        }
+        majority_vote_metrics.update(get_dataframe_stats(train_val_df, test_df=test_df, active_label=active_label))
+        majority_vote_metrics_cv = study.best_trial.user_attrs['majority_vote_metrics']
+        majority_vote_metrics_cv['cv_models'] = True
+        majority_vote_report = pd.DataFrame([
+            majority_vote_metrics,
+            majority_vote_metrics_cv,
+        ])
+        majority_vote_report['model_type'] = 'Pytorch'
+        majority_vote_report['split_type'] = split_type
 
     # Ablation study: disable embeddings at a time
     ablation_report = []
@@ -407,8 +405,9 @@ def hyperparameter_tuning_and_training(
         'hparam_report': hparam_report,
         'test_report': test_report,
         'ablation_report': ablation_report,
-        'majority_vote_report': majority_vote_report,
     }
+    if not fast_dev_run:
+        ret['majority_vote_report'] = majority_vote_report
     return ret
 
 

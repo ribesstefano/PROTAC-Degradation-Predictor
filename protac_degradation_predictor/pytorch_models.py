@@ -36,7 +36,7 @@ class PROTAC_Predictor(nn.Module):
         e3_emb_dim: int = config.protein_embedding_size,
         cell_emb_dim: int = config.cell_embedding_size,
         dropout: float = 0.2,
-        join_embeddings: Literal['beginning', 'concat', 'sum'] = 'concat',
+        join_embeddings: Literal['beginning', 'concat', 'sum'] = 'sum',
         disabled_embeddings: list = [],
     ):
         """ Initialize the PROTAC model.
@@ -140,7 +140,7 @@ class PROTAC_Model(pl.LightningModule):
         batch_size: int = 32,
         learning_rate: float = 1e-3,
         dropout: float = 0.2,
-        join_embeddings: Literal['beginning', 'concat', 'sum'] = 'concat',
+        join_embeddings: Literal['beginning', 'concat', 'sum'] = 'sum',
         train_dataset: PROTAC_Dataset = None,
         val_dataset: PROTAC_Dataset = None,
         test_dataset: PROTAC_Dataset = None,
@@ -308,7 +308,19 @@ class PROTAC_Model(pl.LightningModule):
         return self.step(batch, batch_idx, 'test')
 
     def configure_optimizers(self):
-        return optim.Adam(self.parameters(), lr=self.learning_rate)
+        optimizer = optim.Adam(self.parameters(), lr=self.learning_rate)
+        return {
+            'optimizer': optimizer,
+            'lr_scheduler': optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer=optimizer,
+                mode='min',
+                factor=0.5,
+                patience=2,
+            ),
+            'interval': 'step',  # or 'epoch'
+            'frequency': 1,
+            'monitor': 'val_loss',
+        }
 
     def predict_step(self, batch, batch_idx):
         poi_emb = batch['poi_emb']
@@ -384,7 +396,7 @@ def train_model(
         poi_emb_dim: int = config.protein_embedding_size,
         e3_emb_dim: int = config.protein_embedding_size,
         cell_emb_dim: int = config.cell_embedding_size,
-        join_embeddings: Literal['beginning', 'concat', 'sum'] = 'concat',
+        join_embeddings: Literal['beginning', 'concat', 'sum'] = 'sum',
         smote_k_neighbors:int = 5,
         use_smote: bool = True,
         apply_scaling: bool = False,
@@ -482,6 +494,8 @@ def train_model(
             verbose=False,
         ),
     ]
+    if use_logger:
+        callbacks.append(pl.callbacks.LearningRateMonitor(logging_interval='step'))
     if enable_checkpointing:
         callbacks.append(pl.callbacks.ModelCheckpoint(
             monitor='val_acc',

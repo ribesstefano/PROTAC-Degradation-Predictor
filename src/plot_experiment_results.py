@@ -12,7 +12,7 @@ import numpy as np
 palette = ['#83B8FE', '#FFA54C', '#94ED67', '#FF7FFF']
 
 
-def plot_metrics(df, title):
+def plot_training_curves(df, split_type):
     # Clean the data
     df = df.dropna(how='all', axis=1)
 
@@ -37,6 +37,10 @@ def plot_metrics(df, title):
     ax[1].set_ylabel('Accuracy')
     ax[1].legend(loc='lower right')
     ax[1].grid(axis='both', alpha=0.5)
+    # Set limit to y-axis
+    ax[1].set_ylim(0, 1.0)
+    # Set y-axis to percentage
+    ax[1].yaxis.set_major_formatter(plt.matplotlib.ticker.PercentFormatter(1, decimals=0))
 
     # Plot training ROC-AUC
     ax[2].plot(epoch_data.index, epoch_data['train_roc_auc_epoch'], label='Training ROC-AUC')
@@ -44,16 +48,16 @@ def plot_metrics(df, title):
     ax[2].set_ylabel('ROC-AUC')
     ax[2].legend(loc='lower right')
     ax[2].grid(axis='both', alpha=0.5)
-
+    # Set limit to y-axis
+    ax[2].set_ylim(0, 1.0)
     # Set x-axis label
     ax[2].set_xlabel('Epoch')
 
-    plt.title(title)
     plt.tight_layout()
-    plt.savefig(f'plots/{title}_metrics.pdf', bbox_inches='tight')
+    plt.savefig(f'plots/training_metrics_{split_type}.pdf', bbox_inches='tight')
     
 
-def plot_report(df_cv, df_test, title=None):
+def plot_performance_metrics(df_cv, df_test, title=None):
 
     # Extract and prepare CV data
     cv_data = df_cv[['model_type', 'fold', 'val_acc', 'val_roc_auc', 'test_acc', 'test_roc_auc', 'split_type']]
@@ -114,7 +118,13 @@ def plot_report(df_cv, df_test, title=None):
 
     # Plotting
     plt.figure(figsize=(12, 6))
-    sns.barplot(data=combined_data, x='Metric', y='Score', hue='Split Type', errorbar='sd', palette=palette)
+    sns.barplot(
+        data=combined_data,
+        x='Metric',
+        y='Score',
+        hue='Split Type',
+        errorbar=('sd', 1),
+        palette=palette)
     plt.title('')
     plt.ylabel('')
     plt.xlabel('')
@@ -134,9 +144,9 @@ def plot_report(df_cv, df_test, title=None):
         if p.get_height() < 0.01:
             continue
         if i % 2 == 0:
-            value = '{:.1f}%'.format(100 * p.get_height())
+            value = f'{p.get_height():.1%}'
         else:
-            value = '{:.2f}'.format(p.get_height())
+            value = f'{p.get_height():.3f}'
         
         print(f'Plotting value: {p.get_height()} -> {value}')
         x = p.get_x() + p.get_width() / 2
@@ -144,6 +154,120 @@ def plot_report(df_cv, df_test, title=None):
         plt.annotate(value, (x, y), ha='center', va='center', color='black', fontsize=10, rotation=90, alpha=0.8)
 
     plt.savefig(f'plots/{title}.pdf', bbox_inches='tight')
+
+
+def plot_ablation_study(report):
+    # Define the ablation study combinations
+    ablation_study_combinations = [
+        'disabled smiles',
+        'disabled poi',
+        'disabled e3',
+        'disabled cell',
+        'disabled poi e3 smiles',
+        'disabled poi e3 cell',
+    ]
+
+    for group in report['split_type'].unique():    
+        baseline = report[report['disabled_embeddings'].isna()].copy()
+        baseline = baseline[baseline['split_type'] == group]
+        baseline['disabled_embeddings'] = 'all embeddings enabled'
+        # metrics_to_show = ['val_acc', 'test_acc']
+        metrics_to_show = ['test_acc']
+        # baseline = baseline.melt(id_vars=['fold', 'disabled_embeddings'], value_vars=metrics_to_show, var_name='metric', value_name='score')
+        baseline = baseline.melt(id_vars=['disabled_embeddings'], value_vars=metrics_to_show, var_name='metric', value_name='score')
+
+        print(f'Group: {group}, avg: {(0.755814 + 0.720930 + 0.732558) / 3:.1%}')
+        print(f'Group: {group}, avg: {(0.7558139562606812 + 0.7209302186965942 + 0.7325581312179565) / 3:.1%}')
+        print(baseline)
+
+        ablation_dfs = []
+        for disabled_embeddings in ablation_study_combinations:
+            if pd.isnull(disabled_embeddings):
+                continue
+            tmp = report[report['disabled_embeddings'] == disabled_embeddings].copy()
+            tmp = tmp[tmp['split_type'] == group]
+            # tmp = tmp.melt(id_vars=['fold', 'disabled_embeddings'], value_vars=metrics_to_show, var_name='metric', value_name='score')
+            tmp = tmp.melt(id_vars=['disabled_embeddings'], value_vars=metrics_to_show, var_name='metric', value_name='score')
+            ablation_dfs.append(tmp)
+        ablation_df = pd.concat(ablation_dfs)
+
+        # dummy_val_df = pd.DataFrame()
+        # tmp = report[report['split_type'] == group]
+        # dummy_val_df['score'] = tmp[['val_active_perc', 'val_inactive_perc']].max(axis=1)
+        # dummy_val_df['metric'] = 'val_acc'
+        # dummy_val_df['disabled_embeddings'] = 'dummy'
+
+        dummy_test_df = pd.DataFrame()
+        tmp = report[report['split_type'] == group]
+        dummy_test_df['score'] = tmp[['test_active_perc', 'test_inactive_perc']].max(axis=1)
+        dummy_test_df['metric'] = 'test_acc'
+        dummy_test_df['disabled_embeddings'] = 'dummy'
+
+        # dummy_df = pd.concat([dummy_val_df, dummy_test_df])
+        dummy_df = dummy_test_df
+
+        final_df = pd.concat([dummy_df, baseline, ablation_df])
+
+        final_df['metric'] = final_df['metric'].map({
+            'val_acc': 'Validation Accuracy',
+            'test_acc': 'Test Accuracy',
+            'val_roc_auc': 'Val ROC-AUC',
+            'test_roc_auc': 'Test ROC-AUC',
+        })
+
+        final_df['disabled_embeddings'] = final_df['disabled_embeddings'].map({
+            'all embeddings enabled': 'All embeddings enabled',
+            'dummy': 'Dummy model',
+            'disabled smiles': 'Disabled compound information',
+            'disabled e3': 'Disabled E3 information',
+            'disabled poi': 'Disabled target information',
+            'disabled cell': 'Disabled cell information',
+            'disabled poi e3 smiles': 'Disabled compound, E3, and target info\n(only cell information left)',
+            'disabled poi e3 cell': 'Disabled cell, E3, and target info\n(only compound information left)',
+        })
+
+        # Print final_df to latex
+        tmp  = final_df.groupby(['disabled_embeddings', 'metric']).mean().round(3)
+        # Remove fold column to tmp
+        tmp = tmp.reset_index() #.drop('fold', axis=1)
+
+        # fig, ax = plt.subplots(figsize=(5, 5))
+        fig, ax = plt.subplots()
+
+        sns.barplot(data=final_df,
+            y='disabled_embeddings',
+            x='score',
+            hue='metric',
+            ax=ax,
+            errorbar=('sd', 1),
+            palette=sns.color_palette(palette, len(palette)),
+            saturation=1,
+        )
+
+        # ax.set_title(f'{group.replace("random", "standard")} CV split')
+        ax.grid(axis='x', alpha=0.5)
+        ax.tick_params(axis='y', rotation=0)
+        ax.set_xlim(0, 1.0)
+        ax.xaxis.set_major_formatter(plt.matplotlib.ticker.PercentFormatter(1, decimals=0))
+        ax.set_ylabel('')
+        ax.set_xlabel('')
+        # Set the legend outside the plot and below
+        # ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.08), ncol=2)
+        # Set the legend in the upper right corner
+        ax.legend(loc='upper right')
+
+        # For each bar, add the rotated value (as percentage), inside the bar
+        for i, p in enumerate(plt.gca().patches):
+            # TODO: For some reasons, there is an additional bar being added at
+            # the end of the plot... it's not in the dataframe
+            if i == len(plt.gca().patches) - 1:
+                continue
+            value = '{:.1f}%'.format(100 * p.get_width())
+            y = p.get_y() + p.get_height() / 2
+            x = 0.4 # p.get_height() - p.get_height() / 2
+            plt.annotate(value, (x, y), ha='center', va='center', color='black', fontsize=10, alpha=0.8)
+
+        plt.savefig(f'plots/ablation_study_{group}.pdf', bbox_inches='tight')
 
 
 def main():
@@ -156,28 +280,50 @@ def main():
 
     # Load the data
     reports = {
-        'cv_train': pd.read_csv(f'reports/report_cv_train_{report_base_name}.csv'),
-        'test': pd.read_csv(f'reports/report_test_{report_base_name}.csv'),
-        'ablation': pd.read_csv(f'reports/report_ablation_{report_base_name}.csv'),
-        'hparam': pd.read_csv(f'reports/report_hparam_{report_base_name}.csv'),
+        'cv_train': pd.concat([
+            pd.read_csv(f'reports/cv_report_{report_base_name}_random.csv'),
+            pd.read_csv(f'reports/cv_report_{report_base_name}_uniprot.csv'),
+            pd.read_csv(f'reports/cv_report_{report_base_name}_tanimoto.csv'),
+        ]),
+        'test': pd.concat([
+            pd.read_csv(f'reports/test_report_{report_base_name}_random.csv'),
+            pd.read_csv(f'reports/test_report_{report_base_name}_uniprot.csv'),
+            pd.read_csv(f'reports/test_report_{report_base_name}_tanimoto.csv'),
+        ]),
+        'ablation': pd.concat([
+            pd.read_csv(f'reports/ablation_report_{report_base_name}_random.csv'),
+            pd.read_csv(f'reports/ablation_report_{report_base_name}_uniprot.csv'),
+            pd.read_csv(f'reports/ablation_report_{report_base_name}_tanimoto.csv'),
+        ]),
+        'hparam': pd.concat([
+            pd.read_csv(f'reports/hparam_report_{report_base_name}_random.csv'),
+            pd.read_csv(f'reports/hparam_report_{report_base_name}_uniprot.csv'),
+            pd.read_csv(f'reports/hparam_report_{report_base_name}_tanimoto.csv'),
+        ]),
     }
 
 
-    # metrics = {}
-    # for i in range(n_models_for_test):
-    #     for split_type in ['random', 'tanimoto', 'uniprot', 'e3_ligase']:
-    #         logs_dir = f'logs_{report_base_name}_{split_type}_best_model_n{i}'
-    #         metrics[f'{split_type}_{i}'] = pd.read_csv(f'logs/{logs_dir}/{logs_dir}/metrics.csv')
-    #         metrics[f'{split_type}_{i}']['model_id'] = i
-    #         # Rename 'val_' columns to 'test_' columns
-    #         metrics[f'{split_type}_{i}'] = metrics[f'{split_type}_{i}'].rename(columns={'val_loss': 'test_loss', 'val_acc': 'test_acc', 'val_roc_auc': 'test_roc_auc'})
+    metrics = {}
+    for i in range(n_models_for_test):
+        for split_type in ['random', 'tanimoto', 'uniprot', 'e3_ligase']:
+            logs_dir = f'logs_{report_base_name}_{split_type}_best_model_n{i}'
+            metrics[f'{split_type}_{i}'] = pd.read_csv(f'logs/{logs_dir}/{logs_dir}/metrics.csv')
+            metrics[f'{split_type}_{i}']['model_id'] = i
+            # Rename 'val_' columns to 'test_' columns
+            metrics[f'{split_type}_{i}'] = metrics[f'{split_type}_{i}'].rename(columns={'val_loss': 'test_loss', 'val_acc': 'test_acc', 'val_roc_auc': 'test_roc_auc'})
 
-    #         plot_metrics(metrics[f'{split_type}_{i}'], f'{split_type}_{i}')
+            plot_training_curves(metrics[f'{split_type}_{i}'], f'{split_type}_{i}')
 
 
     df_val = reports['cv_train']
     df_test = reports['test']
-    plot_report(df_val, df_test, title=f'{active_name}_metrics')
+    plot_performance_metrics(df_val, df_test, title=f'{active_name}_metrics')
+
+    reports['test']['disabled_embeddings'] = pd.NA
+    plot_ablation_study(pd.concat([
+        reports['ablation'],
+        reports['test'],
+    ]))
 
 
 if __name__ == '__main__':

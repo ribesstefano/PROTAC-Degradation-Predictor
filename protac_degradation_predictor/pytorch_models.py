@@ -207,8 +207,8 @@ class PROTAC_Model(pl.LightningModule):
             'precision': Precision(task='binary'),
             'recall': Recall(task='binary'),
             'f1_score': F1Score(task='binary'),
-            'opt_score': Accuracy(task='binary') + F1Score(task='binary'),
-            'hp_metric': Accuracy(task='binary'),
+            # 'opt_score': Accuracy(task='binary') + F1Score(task='binary'),
+            # 'hp_metric': Accuracy(task='binary'),
         }, prefix=s.replace('metrics', '')) for s in stages})
 
         # Misc settings
@@ -314,8 +314,8 @@ class PROTAC_Model(pl.LightningModule):
             'lr_scheduler': optim.lr_scheduler.ReduceLROnPlateau(
                 optimizer=optimizer,
                 mode='min',
-                factor=0.5,
-                patience=2,
+                factor=0.1,
+                patience=0,
             ),
             'interval': 'step',  # or 'epoch'
             'frequency': 1,
@@ -508,6 +508,7 @@ def train_model(
         logger=loggers if use_logger else False,
         callbacks=callbacks,
         max_epochs=max_epochs,
+        val_check_interval=0.5,
         fast_dev_run=fast_dev_run,
         enable_model_summary=False,
         enable_checkpointing=enable_checkpointing,
@@ -534,11 +535,22 @@ def train_model(
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         trainer.fit(model)
-    metrics = trainer.validate(model, verbose=False)[0]
+    metrics = {}
+    # Add train metrics
+    train_metrics = {m: v.item() for m, v in trainer.callback_metrics.items() if 'train' in m}
+    metrics.update(train_metrics)
+    # Add validation metrics
+    val_metrics = trainer.validate(model, verbose=False)[0]
+    val_metrics = {m: v for m, v in val_metrics.items() if 'val' in m}
+    metrics.update(val_metrics)
+
     # Add test metrics to metrics
     if test_df is not None:
         test_metrics = trainer.test(model, verbose=False)[0]
+        test_metrics = {m: v for m, v in test_metrics.items() if 'test' in m}
         metrics.update(test_metrics)
+    
+    # Return predictions 
     if return_predictions:
         val_dl = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
         val_pred = trainer.predict(model, val_dl)

@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 @dataclass(frozen=True)
 class Config:
     # Embeddings information
-    morgan_radius: int = 15
+    morgan_radius: int = 10 # 15
     fingerprint_size: int = 256 # 224
     protein_embedding_size: int = 1024
     cell_embedding_size: int = 768

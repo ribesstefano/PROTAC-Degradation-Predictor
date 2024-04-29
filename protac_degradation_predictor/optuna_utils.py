@@ -173,13 +173,11 @@ def pytorch_model_objective(
             disabled_embeddings=disabled_embeddings,
         )
         if test_df is not None:
-            _, trainer, metrics, val_pred, test_pred = ret
+            _, _, metrics, val_pred, test_pred = ret
             test_preds.append(test_pred)
         else:
-            _, trainer, metrics, val_pred = ret
-        train_metrics = {m: v.item() for m, v in trainer.callback_metrics.items() if 'train' in m}
+            _, _, metrics, val_pred = ret
         stats.update(metrics)
-        stats.update(train_metrics)
         report.append(stats.copy())
         val_preds.append(val_pred)
 
@@ -252,7 +250,7 @@ def hyperparameter_tuning_and_training(
     batch_size_options = [4, 8, 16, 32, 64, 128]
     learning_rate_options = (1e-5, 1e-3) # min and max values for loguniform distribution
     smote_k_neighbors_options = list(range(3, 16))
-    dropout_options = (0.1, 0.9)
+    dropout_options = (0.2, 0.9)
 
     # Set the verbosity of Optuna
     optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -325,13 +323,6 @@ def hyperparameter_tuning_and_training(
         metrics['test_model_id'] = i
         metrics.update(dfs_stats)
 
-        # Add the training metrics        
-        train_metrics = {m: v.item() for m, v in trainer.callback_metrics.items() if 'train' in m}
-        logging.info(f'Training metrics: {train_metrics}')
-        logging.info(f'Training trainer.logged_metrics: {trainer.logged_metrics}')
-        logging.info(f'Training trainer.callback_metrics: {trainer.callback_metrics}')
-        
-        metrics.update(train_metrics)
         test_report.append(metrics.copy())
         test_preds.append(test_pred)
     test_report = pd.DataFrame(test_report)

@@ -8,6 +8,7 @@ from typing import Literal
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import protac_degradation_predictor as pdp
+from protac_degradation_predictor.optuna_utils import get_dataframe_stats
 
 import pytorch_lightning as pl
 from rdkit import Chem
@@ -77,21 +78,38 @@ def get_smiles2fp_and_avg_tanimoto(protac_df: pd.DataFrame) -> tuple:
     Returns:
         tuple: The SMILES to fingerprint dictionary and the average Tanimoto similarity.
     """
+    unique_smiles = protac_df['Smiles'].unique().tolist()
+
     smiles2fp = {}
-    for smiles in tqdm(protac_df['Smiles'].unique().tolist(), desc='Precomputing fingerprints'):
+    for smiles in tqdm(unique_smiles, desc='Precomputing fingerprints'):
         smiles2fp[smiles] = pdp.get_fingerprint(smiles)
 
-    # Get the pair-wise tanimoto similarity between the PROTAC fingerprints
+    # # Get the pair-wise tanimoto similarity between the PROTAC fingerprints
+    # tanimoto_matrix = defaultdict(list)
+    # for i, smiles1 in enumerate(tqdm(protac_df['Smiles'].unique(), desc='Computing Tanimoto similarity')):
+    #     fp1 = smiles2fp[smiles1]
+    #     # TODO: Use BulkTanimotoSimilarity for better performance
+    #     for j, smiles2 in enumerate(protac_df['Smiles'].unique()[i:]):
+    #         fp2 = smiles2fp[smiles2]
+    #         tanimoto_dist = 1 - DataStructs.TanimotoSimilarity(fp1, fp2)
+    #         tanimoto_matrix[smiles1].append(tanimoto_dist)
+    # avg_tanimoto = {k: np.mean(v) for k, v in tanimoto_matrix.items()}
+    # protac_df['Avg Tanimoto'] = protac_df['Smiles'].map(avg_tanimoto)
+
+
     tanimoto_matrix = defaultdict(list)
-    for i, smiles1 in enumerate(tqdm(protac_df['Smiles'].unique(), desc='Computing Tanimoto similarity')):
-        fp1 = smiles2fp[smiles1]
-        # TODO: Use BulkTanimotoSimilarity for better performance
-        for j, smiles2 in enumerate(protac_df['Smiles'].unique()):
-            if j < i:
-                continue
-            fp2 = smiles2fp[smiles2]
-            tanimoto_dist = DataStructs.TanimotoSimilarity(fp1, fp2)
-            tanimoto_matrix[smiles1].append(tanimoto_dist)
+    fps = list(smiles2fp.values())
+
+    # Compute all-against-all Tanimoto similarity using BulkTanimotoSimilarity
+    for i, (smiles1, fp1) in enumerate(tqdm(zip(unique_smiles, fps), desc='Computing Tanimoto similarity', total=len(fps))):
+        similarities = DataStructs.BulkTanimotoSimilarity(fp1, fps[i:])  # Only compute for i to end, avoiding duplicates
+        for j, similarity in enumerate(similarities):
+            distance = 1 - similarity
+            tanimoto_matrix[smiles1].append(distance)  # Store as distance
+            if i != i + j:
+                tanimoto_matrix[unique_smiles[i + j]].append(distance)  # Symmetric filling
+
+    # Calculate average Tanimoto distance for each unique SMILES
     avg_tanimoto = {k: np.mean(v) for k, v in tanimoto_matrix.items()}
     protac_df['Avg Tanimoto'] = protac_df['Smiles'].map(avg_tanimoto)
 
@@ -256,7 +274,7 @@ def main(
         test_indeces['e3_ligase'] = get_e3_ligase_split_indices(active_df)
     if experiments == 'tanimoto' or experiments == 'all':
         test_indeces['tanimoto'] = get_tanimoto_split_indices(active_df, active_col, test_split)
-    
+
     # Make directory ../reports if it does not exist
     if not os.path.exists('../reports'):
         os.makedirs('../reports')

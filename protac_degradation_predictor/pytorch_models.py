@@ -63,15 +63,29 @@ class PROTAC_Predictor(nn.Module):
         self.__dict__.update(locals())
 
         # Define "surrogate models" branches
+        # NOTE: The softmax is used to ensure that the embeddings are normalized
+        # and can be summed on a "similar scale".
         if self.join_embeddings != 'beginning':
             if 'poi' not in self.disabled_embeddings:
-                self.poi_emb = nn.Linear(poi_emb_dim, hidden_dim)
+                self.poi_emb = nn.Sequential(
+                    nn.Linear(poi_emb_dim, hidden_dim),
+                    nn.Softmax(dim=1),
+                )
             if 'e3' not in self.disabled_embeddings:
-                self.e3_emb = nn.Linear(e3_emb_dim, hidden_dim)
+                self.e3_emb = nn.Sequential(
+                    nn.Linear(e3_emb_dim, hidden_dim),
+                    nn.Softmax(dim=1),
+                )
             if 'cell' not in self.disabled_embeddings:
-                self.cell_emb = nn.Linear(cell_emb_dim, hidden_dim)
+                self.cell_emb = nn.Sequential(
+                    nn.Linear(cell_emb_dim, hidden_dim),
+                    nn.Softmax(dim=1),
+                )
             if 'smiles' not in self.disabled_embeddings:
-                self.smiles_emb = nn.Linear(smiles_emb_dim, hidden_dim)
+                self.smiles_emb = nn.Sequential(
+                    nn.Linear(smiles_emb_dim, hidden_dim),
+                    nn.Softmax(dim=1),
+                )
 
         # Define hidden dimension for joining layer
         if self.join_embeddings == 'beginning':
@@ -95,6 +109,7 @@ class PROTAC_Predictor(nn.Module):
     def forward(self, poi_emb, e3_emb, cell_emb, smiles_emb):
         embeddings = []
         if self.join_embeddings == 'beginning':
+            # TODO: Remove this if-branch
             if 'poi' not in self.disabled_embeddings:
                 embeddings.append(poi_emb)
             if 'e3' not in self.disabled_embeddings:
@@ -123,7 +138,6 @@ class PROTAC_Predictor(nn.Module):
                 else:
                     x = embeddings[0]
         x = self.dropout(F.relu(self.fc1(x)))
-        x = self.dropout(F.relu(self.fc2(x)))
         x = self.fc3(x)
         return x
 
@@ -137,7 +151,7 @@ class PROTAC_Model(pl.LightningModule):
         poi_emb_dim: int = config.protein_embedding_size,
         e3_emb_dim: int = config.protein_embedding_size,
         cell_emb_dim: int = config.cell_embedding_size,
-        batch_size: int = 32,
+        batch_size: int = 128,
         learning_rate: float = 1e-3,
         dropout: float = 0.2,
         join_embeddings: Literal['beginning', 'concat', 'sum'] = 'sum',
@@ -145,7 +159,7 @@ class PROTAC_Model(pl.LightningModule):
         val_dataset: PROTAC_Dataset = None,
         test_dataset: PROTAC_Dataset = None,
         disabled_embeddings: list = [],
-        apply_scaling: bool = False,
+        apply_scaling: bool = True,
     ):
         """ Initialize the PROTAC Pytorch Lightning model.
         
@@ -388,7 +402,7 @@ def train_model(
         val_df: pd.DataFrame,
         test_df: Optional[pd.DataFrame] = None,
         hidden_dim: int = 768,
-        batch_size: int = 8,
+        batch_size: int = 128,
         learning_rate: float = 2e-5,
         dropout: float = 0.2,
         max_epochs: int = 50,
@@ -399,7 +413,7 @@ def train_model(
         join_embeddings: Literal['beginning', 'concat', 'sum'] = 'sum',
         smote_k_neighbors:int = 5,
         use_smote: bool = True,
-        apply_scaling: bool = False,
+        apply_scaling: bool = True,
         active_label: str = 'Active',
         fast_dev_run: bool = False,
         use_logger: bool = True,
@@ -508,7 +522,7 @@ def train_model(
         logger=loggers if use_logger else False,
         callbacks=callbacks,
         max_epochs=max_epochs,
-        val_check_interval=0.5,
+        # val_check_interval=0.5,
         fast_dev_run=fast_dev_run,
         enable_model_summary=False,
         enable_checkpointing=enable_checkpointing,

@@ -55,14 +55,17 @@ def get_dataframe_stats(
         stats['train_len'] = len(train_df)
         stats['train_active_perc'] = train_df[active_label].sum() / len(train_df)
         stats['train_inactive_perc'] = (len(train_df) - train_df[active_label].sum()) / len(train_df)
+        stats['train_avg_tanimoto_dist'] = train_df['Avg Tanimoto'].mean()
     if val_df is not None:
         stats['val_len'] = len(val_df)
         stats['val_active_perc'] = val_df[active_label].sum() / len(val_df)
         stats['val_inactive_perc'] = (len(val_df) - val_df[active_label].sum()) / len(val_df)
+        stats['val_avg_tanimoto_dist'] = val_df['Avg Tanimoto'].mean()
     if test_df is not None:
         stats['test_len'] = len(test_df)
         stats['test_active_perc'] = test_df[active_label].sum() / len(test_df)
         stats['test_inactive_perc'] = (len(test_df) - test_df[active_label].sum()) / len(test_df)
+        stats['test_avg_tanimoto_dist'] = test_df['Avg Tanimoto'].mean()
     if train_df is not None and val_df is not None:
         leaking_uniprot = list(set(train_df['Uniprot']).intersection(set(val_df['Uniprot'])))
         leaking_smiles = list(set(train_df['Smiles']).intersection(set(val_df['Smiles'])))
@@ -98,6 +101,10 @@ def pytorch_model_objective(
         active_label: str = 'Active',
         disabled_embeddings: List[str] = [],
         max_epochs: int = 100,
+        use_logger: bool = False,
+        logger_save_dir: str = 'logs',
+        logger_name: str = 'cv_model',
+        enable_checkpointing: bool = False,
 ) -> float:
     """ Objective function for hyperparameter optimization.
     
@@ -116,11 +123,11 @@ def pytorch_model_objective(
     """
     # Suggest hyperparameters to be used accross the CV folds
     hidden_dim = trial.suggest_categorical('hidden_dim', hidden_dim_options)
-    batch_size = trial.suggest_categorical('batch_size', batch_size_options)
+    batch_size = 128 # trial.suggest_categorical('batch_size', batch_size_options)
     learning_rate = trial.suggest_float('learning_rate', *learning_rate_options, log=True)
     smote_k_neighbors = trial.suggest_categorical('smote_k_neighbors', smote_k_neighbors_options)
     use_smote = trial.suggest_categorical('use_smote', [True, False])
-    apply_scaling = trial.suggest_categorical('apply_scaling', [True, False])
+    apply_scaling = True # trial.suggest_categorical('apply_scaling', [True, False])
     dropout = trial.suggest_float('dropout', *dropout_options)
 
     # Start the CV over the folds
@@ -166,11 +173,14 @@ def pytorch_model_objective(
             smote_k_neighbors=smote_k_neighbors,
             apply_scaling=apply_scaling,
             use_smote=use_smote,
-            use_logger=False,
             fast_dev_run=fast_dev_run,
             active_label=active_label,
             return_predictions=True,
             disabled_embeddings=disabled_embeddings,
+            use_logger=use_logger,
+            logger_save_dir=logger_save_dir,
+            logger_name=f'{logger_name}_fold{k}',
+            enable_checkpointing=enable_checkpointing,
         )
         if test_df is not None:
             _, _, metrics, val_pred, test_pred = ret
@@ -246,11 +256,13 @@ def hyperparameter_tuning_and_training(
     pl.seed_everything(42)
 
     # Define the search space
-    hidden_dim_options = [32, 64, 128, 256, 512, 768]
-    batch_size_options = [4, 8, 16, 32, 64, 128]
-    learning_rate_options = (1e-5, 1e-3) # min and max values for loguniform distribution
+    hidden_dim_options = [32, 64, 128, 256, 512]
+    batch_size_options = [128, 128] # [4, 8, 16, 32, 64, 128]
+    learning_rate_options = (1e-6, 1e-3) # min and max values for loguniform distribution
     smote_k_neighbors_options = list(range(3, 16))
-    dropout_options = (0.2, 0.9)
+    # NOTE: We want Optuna to explore the combination (very low dropout, very
+    # small hidden_dim)
+    dropout_options = (0, 0.5)
 
     # Set the verbosity of Optuna
     optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -293,6 +305,31 @@ def hyperparameter_tuning_and_training(
     cv_report = pd.DataFrame(study.best_trial.user_attrs['report'])
     hparam_report = pd.DataFrame([study.best_params])
 
+    # Train the best CV models and store their checkpoints by running the objective
+    pytorch_model_objective(
+        trial=study.best_trial,
+        protein2embedding=protein2embedding,
+        cell2embedding=cell2embedding,
+        smiles2fp=smiles2fp,
+        train_val_df=train_val_df,
+        kf=kf,
+        groups=groups,
+        test_df=test_df,
+        hidden_dim_options=hidden_dim_options,
+        batch_size_options=batch_size_options,
+        learning_rate_options=learning_rate_options,
+        smote_k_neighbors_options=smote_k_neighbors_options,
+        dropout_options=dropout_options,
+        fast_dev_run=fast_dev_run,
+        active_label=active_label,
+        max_epochs=max_epochs,
+        disabled_embeddings=[],
+        use_logger=True,
+        logger_save_dir=logger_save_dir,
+        logger_name=f'{logger_name}_{split_type}_cv_model',
+        enable_checkpointing=True,
+    )
+
     # Retrain N models with the best hyperparameters (measure model uncertainty)
     test_report = []
     test_preds = []
@@ -315,6 +352,8 @@ def hyperparameter_tuning_and_training(
             enable_checkpointing=True,
             checkpoint_model_name=f'best_model_n{i}_{split_type}',
             return_predictions=True,
+            batch_size=128,
+            apply_scaling=True,
             **study.best_params,
         )
         # Rename the keys in the metrics dictionary
@@ -371,6 +410,8 @@ def hyperparameter_tuning_and_training(
             logger_save_dir=logger_save_dir,
             logger_name=f'{logger_name}_disabled-{"-".join(disabled_embeddings)}',
             disabled_embeddings=disabled_embeddings,
+            batch_size=128,
+            apply_scaling=True,
             **study.best_params,
         )
         # Rename the keys in the metrics dictionary

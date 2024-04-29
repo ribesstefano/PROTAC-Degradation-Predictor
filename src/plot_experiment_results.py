@@ -12,7 +12,9 @@ import numpy as np
 palette = ['#83B8FE', '#FFA54C', '#94ED67', '#FF7FFF']
 
 
-def plot_training_curves(df, split_type):
+def plot_training_curves(df, split_type, stage='test'):
+    Stage = 'Test' if stage == 'test' else 'Validation'
+
     # Clean the data
     df = df.dropna(how='all', axis=1)
 
@@ -26,14 +28,14 @@ def plot_training_curves(df, split_type):
 
     # Plot training loss
     ax[0].plot(epoch_data.index, epoch_data['train_loss_epoch'], label='Training Loss')
-    ax[0].plot(epoch_data.index, epoch_data['test_loss'], label='Test Loss', linestyle='--')
+    ax[0].plot(epoch_data.index, epoch_data[f'{stage}_loss'], label=f'{Stage} Loss', linestyle='--')
     ax[0].set_ylabel('Loss')
     ax[0].legend(loc='lower right')
     ax[0].grid(axis='both', alpha=0.5)
 
     # Plot training accuracy
     ax[1].plot(epoch_data.index, epoch_data['train_acc_epoch'], label='Training Accuracy')
-    ax[1].plot(epoch_data.index, epoch_data['test_acc'], label='Test Accuracy', linestyle='--')
+    ax[1].plot(epoch_data.index, epoch_data[f'{stage}_acc'], label=f'{Stage} Accuracy', linestyle='--')
     ax[1].set_ylabel('Accuracy')
     ax[1].legend(loc='lower right')
     ax[1].grid(axis='both', alpha=0.5)
@@ -44,7 +46,7 @@ def plot_training_curves(df, split_type):
 
     # Plot training ROC-AUC
     ax[2].plot(epoch_data.index, epoch_data['train_roc_auc_epoch'], label='Training ROC-AUC')
-    ax[2].plot(epoch_data.index, epoch_data['test_roc_auc'], label='Test ROC-AUC', linestyle='--')
+    ax[2].plot(epoch_data.index, epoch_data[f'{stage}_roc_auc'], label=f'{Stage} ROC-AUC', linestyle='--')
     ax[2].set_ylabel('ROC-AUC')
     ax[2].legend(loc='lower right')
     ax[2].grid(axis='both', alpha=0.5)
@@ -270,10 +272,18 @@ def plot_ablation_study(report):
         plt.savefig(f'plots/ablation_study_{group}.pdf', bbox_inches='tight')
 
 
+def plot_majority_voting_performance(df):
+    # cv_models,test_acc,test_roc_auc,split_type
+    # Melt the dataframe
+    df = df.melt(id_vars=['cv_models', 'test_acc', 'test_roc_auc', 'split_type'], var_name='Metric', value_name='Score')
+    print(df)
+
+
 def main():
     active_col = 'Active (Dmax 0.6, pDC50 6.0)'
     test_split = 0.1
     n_models_for_test = 3
+    cv_n_folds = 5
 
     active_name = active_col.replace(' ', '_').replace('(', '').replace(')', '').replace(',', '')
     report_base_name = f'{active_name}_test_split_{test_split}'
@@ -300,24 +310,35 @@ def main():
             pd.read_csv(f'reports/hparam_report_{report_base_name}_uniprot.csv'),
             pd.read_csv(f'reports/hparam_report_{report_base_name}_tanimoto.csv'),
         ]),
+        'majority_vote': pd.concat([
+            pd.read_csv(f'reports/majority_vote_report_{report_base_name}_random.csv'),
+            pd.read_csv(f'reports/majority_vote_report_{report_base_name}_uniprot.csv'),
+            pd.read_csv(f'reports/majority_vote_report_{report_base_name}_tanimoto.csv'),
+        ]),
     }
 
 
-    metrics = {}
-    for i in range(n_models_for_test):
-        for split_type in ['random', 'tanimoto', 'uniprot', 'e3_ligase']:
+    for split_type in ['random', 'tanimoto', 'uniprot']:
+        for i in range(n_models_for_test):
             logs_dir = f'logs_{report_base_name}_{split_type}_best_model_n{i}'
-            metrics[f'{split_type}_{i}'] = pd.read_csv(f'logs/{logs_dir}/{logs_dir}/metrics.csv')
-            metrics[f'{split_type}_{i}']['model_id'] = i
+            metrics = pd.read_csv(f'logs/{logs_dir}/{logs_dir}/metrics.csv')
+            metrics['model_id'] = i
             # Rename 'val_' columns to 'test_' columns
-            metrics[f'{split_type}_{i}'] = metrics[f'{split_type}_{i}'].rename(columns={'val_loss': 'test_loss', 'val_acc': 'test_acc', 'val_roc_auc': 'test_roc_auc'})
+            metrics = metrics.rename(columns={'val_loss': 'test_loss', 'val_acc': 'test_acc', 'val_roc_auc': 'test_roc_auc'})
+            plot_training_curves(metrics, f'{split_type}_best_model_n{i}')
 
-            plot_training_curves(metrics[f'{split_type}_{i}'], f'{split_type}_{i}')
-
+        for i in range(cv_n_folds):
+            # logs_dir = f'logs_{report_base_name}_{split_type}_best_model_n{i}'
+            logs_dir = f'{split_type}_cv_model_fold{i}'
+            metrics = pd.read_csv(f'logs/{logs_dir}/{logs_dir}/metrics.csv')
+            metrics['fold'] = i
+            plot_training_curves(metrics, f'{split_type}_cv_model_fold{i}', stage='val')
 
     df_val = reports['cv_train']
     df_test = reports['test']
     plot_performance_metrics(df_val, df_test, title=f'{active_name}_metrics')
+
+    plot_majority_voting_performance(reports['majority_vote'])
 
     reports['test']['disabled_embeddings'] = pd.NA
     plot_ablation_study(pd.concat([

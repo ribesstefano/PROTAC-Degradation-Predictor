@@ -1,2 +1,0 @@
-hidden_dim,batch_size,learning_rate,join_embeddings,smote_k_neighbors,use_smote,apply_scaling,dropout,split_type
-512,32,1.0549183286920568e-05,sum,6,False,True,0.2629572558965121,uniprot

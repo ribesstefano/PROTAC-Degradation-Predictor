@@ -71,6 +71,8 @@ def plot_performance_metrics(df_cv, df_test, title=None):
         'test_roc_auc': 'Test ROC AUC'
     })
     cv_data['Stage'] = cv_data['Metric'].apply(lambda x: 'Validation' if 'Val' in x else 'Test')
+    # Remove test data from CV data
+    cv_data = cv_data[cv_data['Stage'] == 'Validation']
 
     # Extract and prepare test data
     test_data = df_test[['model_type', 'test_acc', 'test_roc_auc', 'split_type']]
@@ -180,18 +182,18 @@ def plot_ablation_study(report):
 
         print(f'Group: {group}, avg: {(0.755814 + 0.720930 + 0.732558) / 3:.1%}')
         print(f'Group: {group}, avg: {(0.7558139562606812 + 0.7209302186965942 + 0.7325581312179565) / 3:.1%}')
-        print(baseline)
+        print('baseline:\n', baseline)
 
         ablation_dfs = []
         for disabled_embeddings in ablation_study_combinations:
-            if pd.isnull(disabled_embeddings):
-                continue
             tmp = report[report['disabled_embeddings'] == disabled_embeddings].copy()
             tmp = tmp[tmp['split_type'] == group]
             # tmp = tmp.melt(id_vars=['fold', 'disabled_embeddings'], value_vars=metrics_to_show, var_name='metric', value_name='score')
             tmp = tmp.melt(id_vars=['disabled_embeddings'], value_vars=metrics_to_show, var_name='metric', value_name='score')
             ablation_dfs.append(tmp)
         ablation_df = pd.concat(ablation_dfs)
+
+        print('ablation_df:\n', ablation_df)
 
         # dummy_val_df = pd.DataFrame()
         # tmp = report[report['split_type'] == group]
@@ -232,6 +234,8 @@ def plot_ablation_study(report):
         tmp  = final_df.groupby(['disabled_embeddings', 'metric']).mean().round(3)
         # Remove fold column to tmp
         tmp = tmp.reset_index() #.drop('fold', axis=1)
+
+        print('DF to plot:\n', tmp.to_markdown(index=False))
 
         # fig, ax = plt.subplots(figsize=(5, 5))
         fig, ax = plt.subplots()
@@ -329,14 +333,22 @@ def main():
 
         for i in range(cv_n_folds):
             # logs_dir = f'logs_{report_base_name}_{split_type}_best_model_n{i}'
-            logs_dir = f'{split_type}_cv_model_fold{i}'
+            logs_dir = f'logs_{report_base_name}_{split_type}_{split_type}_cv_model_fold{i}'
             metrics = pd.read_csv(f'logs/{logs_dir}/{logs_dir}/metrics.csv')
             metrics['fold'] = i
             plot_training_curves(metrics, f'{split_type}_cv_model_fold{i}', stage='val')
 
-    df_val = reports['cv_train']
-    df_test = reports['test']
-    plot_performance_metrics(df_val, df_test, title=f'{active_name}_metrics')
+    plot_performance_metrics(
+        reports['cv_train'],
+        reports['test'],
+        title=f'{active_name}_metrics',
+    )
+
+    plot_performance_metrics(
+        reports['cv_train'],
+        reports['majority_vote'][reports['majority_vote']['cv_models'] == False],
+        title=f'{active_name}_metrics_majority_vote',
+    )
 
     plot_majority_voting_performance(reports['majority_vote'])
 
@@ -345,6 +357,9 @@ def main():
         reports['ablation'],
         reports['test'],
     ]))
+
+    # Plot hyperparameter optimization results to markdown
+    print(reports['hparam'][['split_type', 'hidden_dim', 'learning_rate', 'dropout', 'use_smote', 'smote_k_neighbors']].to_markdown(index=False))
 
 
 if __name__ == '__main__':

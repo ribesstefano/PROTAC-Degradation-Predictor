@@ -37,6 +37,7 @@ class PROTAC_Predictor(nn.Module):
         cell_emb_dim: int = config.cell_embedding_size,
         dropout: float = 0.2,
         join_embeddings: Literal['beginning', 'concat', 'sum'] = 'sum',
+        use_batch_norm: bool = False,
         disabled_embeddings: list = [],
     ):
         """ Initialize the PROTAC model.
@@ -58,6 +59,7 @@ class PROTAC_Predictor(nn.Module):
         self.smiles_emb_dim = smiles_emb_dim
         self.hidden_dim = hidden_dim
         self.join_embeddings = join_embeddings
+        self.use_batch_norm = use_batch_norm
         self.disabled_embeddings = disabled_embeddings
         # Set our init args as class attributes
         self.__dict__.update(locals())
@@ -103,6 +105,7 @@ class PROTAC_Predictor(nn.Module):
         self.fc2 = nn.Linear(hidden_dim, hidden_dim)
         self.fc3 = nn.Linear(hidden_dim, 1)
 
+        self.bnorm = nn.BatchNorm1d(hidden_dim)
         self.dropout = nn.Dropout(p=dropout)
 
     
@@ -137,7 +140,8 @@ class PROTAC_Predictor(nn.Module):
                     x = torch.sum(embeddings, dim=1)
                 else:
                     x = embeddings[0]
-        x = self.dropout(F.relu(self.fc1(x)))
+        x = F.relu(self.fc1(x))
+        x = self.bnorm(x) if self.use_batch_norm else self.self.dropout(x)
         x = self.fc3(x)
         return x
 
@@ -154,6 +158,7 @@ class PROTAC_Model(pl.LightningModule):
         batch_size: int = 128,
         learning_rate: float = 1e-3,
         dropout: float = 0.2,
+        use_batch_norm: bool = False,
         join_embeddings: Literal['beginning', 'concat', 'sum'] = 'sum',
         train_dataset: PROTAC_Dataset = None,
         val_dataset: PROTAC_Dataset = None,
@@ -211,6 +216,7 @@ class PROTAC_Model(pl.LightningModule):
             cell_emb_dim=cell_emb_dim,
             dropout=dropout,
             join_embeddings=join_embeddings,
+            use_batch_norm=use_batch_norm,
             disabled_embeddings=disabled_embeddings,
         )
 
@@ -394,6 +400,7 @@ class PROTAC_Model(pl.LightningModule):
                 logging.warning("Scalers not found in checkpoint. Consider re-fitting scalers if necessary.")
 
 
+# TODO: Use some sort of **kwargs to pass all the parameters to the model...
 def train_model(
         protein2embedding: Dict,
         cell2embedding: Dict,
@@ -406,6 +413,7 @@ def train_model(
         learning_rate: float = 2e-5,
         dropout: float = 0.2,
         max_epochs: int = 50,
+        use_batch_norm: bool = False,
         smiles_emb_dim: int = config.fingerprint_size,
         poi_emb_dim: int = config.protein_embedding_size,
         e3_emb_dim: int = config.protein_embedding_size,
@@ -539,6 +547,7 @@ def train_model(
         batch_size=batch_size,
         join_embeddings=join_embeddings,
         dropout=dropout,
+        use_batch_norm=use_batch_norm,
         learning_rate=learning_rate,
         apply_scaling=apply_scaling,
         train_dataset=train_ds,

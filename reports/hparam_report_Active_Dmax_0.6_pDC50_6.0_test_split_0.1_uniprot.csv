@@ -1,0 +1,2 @@
+hidden_dim,learning_rate,smote_k_neighbors,use_smote,dropout,split_type
+64,0.0006270709747290424,12,True,0.012715851900529762,uniprot

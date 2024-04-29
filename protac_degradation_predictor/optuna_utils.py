@@ -129,6 +129,7 @@ def pytorch_model_objective(
     use_smote = trial.suggest_categorical('use_smote', [True, False])
     apply_scaling = True # trial.suggest_categorical('apply_scaling', [True, False])
     dropout = trial.suggest_float('dropout', *dropout_options)
+    use_batch_norm = trial.suggest_categorical('use_batch_norm', [True, False])
 
     # Start the CV over the folds
     X = train_val_df.copy().drop(columns=active_label)
@@ -169,6 +170,7 @@ def pytorch_model_objective(
             batch_size=batch_size,
             learning_rate=learning_rate,
             dropout=dropout,
+            use_batch_norm=use_batch_norm,
             max_epochs=max_epochs,
             smote_k_neighbors=smote_k_neighbors,
             apply_scaling=apply_scaling,
@@ -256,7 +258,7 @@ def hyperparameter_tuning_and_training(
     pl.seed_everything(42)
 
     # Define the search space
-    hidden_dim_options = [32, 64, 128, 256, 512]
+    hidden_dim_options = [16, 32, 64, 128, 256] #, 512]
     batch_size_options = [128, 128] # [4, 8, 16, 32, 64, 128]
     learning_rate_options = (1e-6, 1e-3) # min and max values for loguniform distribution
     smote_k_neighbors_options = list(range(3, 16))
@@ -393,7 +395,16 @@ def hyperparameter_tuning_and_training(
     # Ablation study: disable embeddings at a time
     ablation_report = []
     dfs_stats = get_dataframe_stats(train_val_df, test_df=test_df, active_label=active_label)
-    for disabled_embeddings in [['e3'], ['poi'], ['cell'], ['smiles'], ['e3', 'cell'], ['poi', 'e3', 'cell']]:
+    disabled_embeddings_combinations = [
+        ['e3'],
+        ['poi'],
+        ['cell'],
+        ['smiles'],
+        ['e3', 'cell'],
+        ['poi', 'e3'],
+        ['poi', 'e3', 'cell'],
+    ]
+    for disabled_embeddings in disabled_embeddings_combinations:
         logging.info('-' * 100)
         logging.info(f'Ablation study with disabled embeddings: {disabled_embeddings}')
         logging.info('-' * 100)

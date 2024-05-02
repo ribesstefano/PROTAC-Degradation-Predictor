@@ -359,19 +359,25 @@ def main():
     plot_performance_metrics(
         reports['cv_train'],
         reports['test'],
-        title=f'{active_name}_metrics',
+        title=f'mean_performance-best_models_as_test',
+    )
+
+    plot_performance_metrics(
+        reports['cv_train'],
+        reports['cv_train'],
+        title=f'mean_performance-cv_models_as_test',
     )
 
     plot_performance_metrics(
         reports['cv_train'],
         reports['majority_vote'][reports['majority_vote']['cv_models'].isna()],
-        title=f'{active_name}_metrics_majority_vote_best_models',
+        title=f'majority_vote_performance-best_models_as_test',
     )
 
     plot_performance_metrics(
         reports['cv_train'],
         reports['majority_vote'][reports['majority_vote']['cv_models'] == True],
-        title=f'{active_name}_metrics_majority_vote_cv_models',
+        title=f'majority_vote_performance-cv_models_as_test',
     )
 
     # plot_majority_voting_performance(reports['majority_vote'])

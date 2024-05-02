@@ -342,7 +342,7 @@ def main():
             metrics['model_id'] = i
             # Rename 'val_' columns to 'test_' columns
             metrics = metrics.rename(columns={'val_loss': 'test_loss', 'val_acc': 'test_acc', 'val_roc_auc': 'test_roc_auc'})
-            plot_training_curves(metrics, f'{split_type}_best_model_n{i}')
+            # plot_training_curves(metrics, f'{split_type}_best_model_n{i}')
             split_metrics.append(metrics)
         plot_training_curves(pd.concat(split_metrics), f'{split_type}_best_model', multimodels=True)
 
@@ -352,29 +352,29 @@ def main():
             logs_dir = f'logs_{report_base_name}_{split_type}_{split_type}_cv_model_fold{i}'
             metrics = pd.read_csv(f'logs/{logs_dir}/{logs_dir}/metrics.csv')
             metrics['fold'] = i
-            plot_training_curves(metrics, f'{split_type}_cv_model_fold{i}', stage='val')
+            # plot_training_curves(metrics, f'{split_type}_cv_model_fold{i}', stage='val')
             split_metrics_cv.append(metrics)
         plot_training_curves(pd.concat(split_metrics_cv), f'{split_type}_cv_model', stage='val', multimodels=True, groupby='fold')
 
-    # plot_performance_metrics(
-    #     reports['cv_train'],
-    #     reports['test'],
-    #     title=f'{active_name}_metrics',
-    # )
+    plot_performance_metrics(
+        reports['cv_train'],
+        reports['test'],
+        title=f'{active_name}_metrics',
+    )
 
-    # plot_performance_metrics(
-    #     reports['cv_train'],
-    #     reports['majority_vote'][reports['majority_vote']['cv_models'] == False],
-    #     title=f'{active_name}_metrics_majority_vote',
-    # )
+    plot_performance_metrics(
+        reports['cv_train'],
+        reports['majority_vote'][reports['majority_vote']['cv_models'] == False],
+        title=f'{active_name}_metrics_majority_vote',
+    )
 
-    # plot_majority_voting_performance(reports['majority_vote'])
+    plot_majority_voting_performance(reports['majority_vote'])
 
-    # reports['test']['disabled_embeddings'] = pd.NA
-    # plot_ablation_study(pd.concat([
-    #     reports['ablation'],
-    #     reports['test'],
-    # ]))
+    reports['test']['disabled_embeddings'] = pd.NA
+    plot_ablation_study(pd.concat([
+        reports['ablation'],
+        reports['test'],
+    ]))
 
     # # Plot hyperparameter optimization results to markdown
     # print(reports['hparam'][['split_type', 'hidden_dim', 'learning_rate', 'dropout', 'use_smote', 'smote_k_neighbors']].to_markdown(index=False))

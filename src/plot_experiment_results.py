@@ -364,11 +364,17 @@ def main():
 
     plot_performance_metrics(
         reports['cv_train'],
-        reports['majority_vote'][reports['majority_vote']['cv_models'] == False],
-        title=f'{active_name}_metrics_majority_vote',
+        reports['majority_vote'][reports['majority_vote']['cv_models'].isna()],
+        title=f'{active_name}_metrics_majority_vote_best_models',
     )
 
-    plot_majority_voting_performance(reports['majority_vote'])
+    plot_performance_metrics(
+        reports['cv_train'],
+        reports['majority_vote'][reports['majority_vote']['cv_models'] == True],
+        title=f'{active_name}_metrics_majority_vote_cv_models',
+    )
+
+    # plot_majority_voting_performance(reports['majority_vote'])
 
     reports['test']['disabled_embeddings'] = pd.NA
     plot_ablation_study(pd.concat([

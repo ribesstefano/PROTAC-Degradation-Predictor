@@ -12,7 +12,7 @@ import numpy as np
 palette = ['#83B8FE', '#FFA54C', '#94ED67', '#FF7FFF']
 
 
-def plot_training_curves(df, split_type, stage='test'):
+def plot_training_curves(df, split_type, stage='test', multimodels=False, groupby='model_id'):
     Stage = 'Test' if stage == 'test' else 'Validation'
 
     # Clean the data
@@ -22,20 +22,28 @@ def plot_training_curves(df, split_type, stage='test'):
     df = df.apply(pd.to_numeric, errors='coerce')
 
     # Group by 'epoch' and aggregate by mean
-    epoch_data = df.groupby('epoch').mean()
+    if multimodels:
+        epoch_data = df.groupby([groupby, 'epoch']).mean().reset_index()
+    else:
+        epoch_data = df.groupby('epoch').mean().reset_index()
 
     fig, ax = plt.subplots(3, 1, figsize=(10, 15))
 
     # Plot training loss
-    ax[0].plot(epoch_data.index, epoch_data['train_loss_epoch'], label='Training Loss')
-    ax[0].plot(epoch_data.index, epoch_data[f'{stage}_loss'], label=f'{Stage} Loss', linestyle='--')
+    # ax[0].plot(epoch_data.index, epoch_data['train_loss_epoch'], label='Training Loss')
+    # ax[0].plot(epoch_data.index, epoch_data[f'{stage}_loss'], label=f'{Stage} Loss', linestyle='--')
+    sns.lineplot(data=epoch_data, x='epoch', y='train_loss_epoch', ax=ax[0], label='Training Loss')
+    sns.lineplot(data=epoch_data, x='epoch', y=f'{stage}_loss', ax=ax[0], label=f'{Stage} Loss', linestyle='--')
+
     ax[0].set_ylabel('Loss')
     ax[0].legend(loc='lower right')
     ax[0].grid(axis='both', alpha=0.5)
 
     # Plot training accuracy
-    ax[1].plot(epoch_data.index, epoch_data['train_acc_epoch'], label='Training Accuracy')
-    ax[1].plot(epoch_data.index, epoch_data[f'{stage}_acc'], label=f'{Stage} Accuracy', linestyle='--')
+    # ax[1].plot(epoch_data.index, epoch_data['train_acc_epoch'], label='Training Accuracy')
+    # ax[1].plot(epoch_data.index, epoch_data[f'{stage}_acc'], label=f'{Stage} Accuracy', linestyle='--')
+    sns.lineplot(data=epoch_data, x='epoch', y='train_acc_epoch', ax=ax[1], label='Training Accuracy')
+    sns.lineplot(data=epoch_data, x='epoch', y=f'{stage}_acc', ax=ax[1], label=f'{Stage} Accuracy', linestyle='--')
     ax[1].set_ylabel('Accuracy')
     ax[1].legend(loc='lower right')
     ax[1].grid(axis='both', alpha=0.5)
@@ -45,8 +53,10 @@ def plot_training_curves(df, split_type, stage='test'):
     ax[1].yaxis.set_major_formatter(plt.matplotlib.ticker.PercentFormatter(1, decimals=0))
 
     # Plot training ROC-AUC
-    ax[2].plot(epoch_data.index, epoch_data['train_roc_auc_epoch'], label='Training ROC-AUC')
-    ax[2].plot(epoch_data.index, epoch_data[f'{stage}_roc_auc'], label=f'{Stage} ROC-AUC', linestyle='--')
+    # ax[2].plot(epoch_data.index, epoch_data['train_roc_auc_epoch'], label='Training ROC-AUC')
+    # ax[2].plot(epoch_data.index, epoch_data[f'{stage}_roc_auc'], label=f'{Stage} ROC-AUC', linestyle='--')
+    sns.lineplot(data=epoch_data, x='epoch', y='train_roc_auc_epoch', ax=ax[2], label='Training ROC-AUC')
+    sns.lineplot(data=epoch_data, x='epoch', y=f'{stage}_roc_auc', ax=ax[2], label=f'{Stage} ROC-AUC', linestyle='--')
     ax[2].set_ylabel('ROC-AUC')
     ax[2].legend(loc='lower right')
     ax[2].grid(axis='both', alpha=0.5)
@@ -167,6 +177,7 @@ def plot_ablation_study(report):
         'disabled poi',
         'disabled e3',
         'disabled cell',
+        'disabled poi e3',
         'disabled poi e3 smiles',
         'disabled poi e3 cell',
     ]
@@ -226,6 +237,7 @@ def plot_ablation_study(report):
             'disabled e3': 'Disabled E3 information',
             'disabled poi': 'Disabled target information',
             'disabled cell': 'Disabled cell information',
+            'disabled poi e3': 'Disabled E3 and target info',
             'disabled poi e3 smiles': 'Disabled compound, E3, and target info\n(only cell information left)',
             'disabled poi e3 cell': 'Disabled cell, E3, and target info\n(only compound information left)',
         })
@@ -323,6 +335,7 @@ def main():
 
 
     for split_type in ['random', 'tanimoto', 'uniprot']:
+        split_metrics = []
         for i in range(n_models_for_test):
             logs_dir = f'logs_{report_base_name}_{split_type}_best_model_n{i}'
             metrics = pd.read_csv(f'logs/{logs_dir}/{logs_dir}/metrics.csv')
@@ -330,36 +343,41 @@ def main():
             # Rename 'val_' columns to 'test_' columns
             metrics = metrics.rename(columns={'val_loss': 'test_loss', 'val_acc': 'test_acc', 'val_roc_auc': 'test_roc_auc'})
             plot_training_curves(metrics, f'{split_type}_best_model_n{i}')
+            split_metrics.append(metrics)
+        plot_training_curves(pd.concat(split_metrics), f'{split_type}_best_model', multimodels=True)
 
+        split_metrics_cv = []
         for i in range(cv_n_folds):
             # logs_dir = f'logs_{report_base_name}_{split_type}_best_model_n{i}'
             logs_dir = f'logs_{report_base_name}_{split_type}_{split_type}_cv_model_fold{i}'
             metrics = pd.read_csv(f'logs/{logs_dir}/{logs_dir}/metrics.csv')
             metrics['fold'] = i
             plot_training_curves(metrics, f'{split_type}_cv_model_fold{i}', stage='val')
+            split_metrics_cv.append(metrics)
+        plot_training_curves(pd.concat(split_metrics_cv), f'{split_type}_cv_model', stage='val', multimodels=True, groupby='fold')
 
-    plot_performance_metrics(
-        reports['cv_train'],
-        reports['test'],
-        title=f'{active_name}_metrics',
-    )
+    # plot_performance_metrics(
+    #     reports['cv_train'],
+    #     reports['test'],
+    #     title=f'{active_name}_metrics',
+    # )
 
-    plot_performance_metrics(
-        reports['cv_train'],
-        reports['majority_vote'][reports['majority_vote']['cv_models'] == False],
-        title=f'{active_name}_metrics_majority_vote',
-    )
+    # plot_performance_metrics(
+    #     reports['cv_train'],
+    #     reports['majority_vote'][reports['majority_vote']['cv_models'] == False],
+    #     title=f'{active_name}_metrics_majority_vote',
+    # )
 
-    plot_majority_voting_performance(reports['majority_vote'])
+    # plot_majority_voting_performance(reports['majority_vote'])
 
-    reports['test']['disabled_embeddings'] = pd.NA
-    plot_ablation_study(pd.concat([
-        reports['ablation'],
-        reports['test'],
-    ]))
+    # reports['test']['disabled_embeddings'] = pd.NA
+    # plot_ablation_study(pd.concat([
+    #     reports['ablation'],
+    #     reports['test'],
+    # ]))
 
-    # Plot hyperparameter optimization results to markdown
-    print(reports['hparam'][['split_type', 'hidden_dim', 'learning_rate', 'dropout', 'use_smote', 'smote_k_neighbors']].to_markdown(index=False))
+    # # Plot hyperparameter optimization results to markdown
+    # print(reports['hparam'][['split_type', 'hidden_dim', 'learning_rate', 'dropout', 'use_smote', 'smote_k_neighbors']].to_markdown(index=False))
 
 
 if __name__ == '__main__':

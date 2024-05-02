@@ -2,7 +2,13 @@ import os
 from typing import Literal, List, Tuple, Optional, Dict
 import logging
 
-from .pytorch_models import train_model, PROTAC_Model
+from .pytorch_models import (
+    train_model,
+    PROTAC_Model,
+    evaluate_model,
+)
+from .protac_dataset import get_datasets
+
 from .sklearn_models import (
     train_sklearn_model,
     suggest_random_forest,
@@ -81,6 +87,26 @@ def get_dataframe_stats(
         stats['perc_leaking_uniprot_train_test'] = len(train_df[train_df['Uniprot'].isin(leaking_uniprot)]) / len(train_df)
         stats['perc_leaking_smiles_train_test'] = len(train_df[train_df['Smiles'].isin(leaking_smiles)]) / len(train_df)
     return stats
+
+
+def get_majority_vote_metrics(
+        test_preds: List,
+        test_df: pd.DataFrame,
+        active_label: str = 'Active',
+) -> Dict:
+    """ Get the majority vote metrics. """
+    test_preds = torch.stack(test_preds)
+    test_preds, _ = torch.mode(test_preds, dim=0)
+    y = torch.tensor(test_df[active_label].tolist())
+    # Measure the test accuracy and ROC AUC
+    majority_vote_metrics = {
+        'test_acc': Accuracy(task='binary')(test_preds, y).item(),
+        'test_roc_auc': AUROC(task='binary')(test_preds, y).item(),
+        'test_precision': Precision(task='binary')(test_preds, y).item(),
+        'test_recall': Recall(task='binary')(test_preds, y).item(),
+        'test_f1': F1Score(task='binary')(test_preds, y).item(),
+    }
+    return majority_vote_metrics
 
 
 def pytorch_model_objective(
@@ -198,18 +224,7 @@ def pytorch_model_objective(
 
     # Get the majority vote for the test predictions
     if test_df is not None and not fast_dev_run:
-        # Get the majority vote for the test predictions
-        test_preds = torch.stack(test_preds)
-        test_preds, _ = torch.mode(test_preds, dim=0)
-        y = torch.tensor(test_df[active_label].tolist())
-        # Measure the test accuracy and ROC AUC
-        majority_vote_metrics = {
-            'test_acc': Accuracy(task='binary')(test_preds, y).item(),
-            'test_roc_auc': AUROC(task='binary')(test_preds, y).item(),
-            'test_precision': Precision(task='binary')(test_preds, y).item(),
-            'test_recall': Recall(task='binary')(test_preds, y).item(),
-            'test_f1': F1Score(task='binary')(test_preds, y).item(),
-        }
+        majority_vote_metrics = get_majority_vote_metrics(test_preds, test_df, active_label)
         majority_vote_metrics.update(get_dataframe_stats(train_df, val_df, test_df, active_label))
         trial.set_user_attr('majority_vote_metrics', majority_vote_metrics)
         logging.info(f'Majority vote metrics: {majority_vote_metrics}')
@@ -278,6 +293,7 @@ def hyperparameter_tuning_and_training(
             study = joblib.load(study_filename)
             study_loaded = True
             logging.info(f'Loaded study from {study_filename}')
+            logging.info(f'Study best params: {study.best_params}')
 
     if not study_loaded or force_study:
         study.optimize(
@@ -333,12 +349,13 @@ def hyperparameter_tuning_and_training(
     )
 
     # Retrain N models with the best hyperparameters (measure model uncertainty)
+    best_models = []
     test_report = []
     test_preds = []
     dfs_stats = get_dataframe_stats(train_val_df, test_df=test_df, active_label=active_label)
     for i in range(n_models_for_test):
         pl.seed_everything(42 + i + 1)
-        _, trainer, metrics, test_pred = train_model(
+        model, trainer, metrics, test_pred = train_model(
             protein2embedding=protein2embedding,
             cell2embedding=cell2embedding,
             smiles2fp=smiles2fp,
@@ -366,22 +383,12 @@ def hyperparameter_tuning_and_training(
 
         test_report.append(metrics.copy())
         test_preds.append(test_pred)
+        best_models.append({'model': model, 'trainer': trainer})
     test_report = pd.DataFrame(test_report)
 
     # Get the majority vote for the test predictions
     if not fast_dev_run:
-        test_preds = torch.stack(test_preds)
-        test_preds, _ = torch.mode(test_preds, dim=0)
-        y = torch.tensor(test_df[active_label].tolist())
-        # Measure the test accuracy and ROC AUC
-        majority_vote_metrics = {
-            'cv_models': False,
-            'test_acc': Accuracy(task='binary')(test_preds, y).item(),
-            'test_roc_auc': AUROC(task='binary')(test_preds, y).item(),
-            'test_precision': Precision(task='binary')(test_preds, y).item(),
-            'test_recall': Recall(task='binary')(test_preds, y).item(),
-            'test_f1': F1Score(task='binary')(test_preds, y).item(),
-        }
+        majority_vote_metrics = get_majority_vote_metrics(test_preds, test_df, active_label)
         majority_vote_metrics.update(get_dataframe_stats(train_val_df, test_df=test_df, active_label=active_label))
         majority_vote_metrics_cv = study.best_trial.user_attrs['majority_vote_metrics']
         majority_vote_metrics_cv['cv_models'] = True
@@ -408,34 +415,71 @@ def hyperparameter_tuning_and_training(
         logging.info('-' * 100)
         logging.info(f'Ablation study with disabled embeddings: {disabled_embeddings}')
         logging.info('-' * 100)
-        _, _, metrics = train_model(
-            protein2embedding=protein2embedding,
-            cell2embedding=cell2embedding,
-            smiles2fp=smiles2fp,
-            train_df=train_val_df,
-            val_df=test_df,
-            fast_dev_run=fast_dev_run,
-            active_label=active_label,
-            max_epochs=max_epochs,
-            use_logger=False,
-            logger_save_dir=logger_save_dir,
-            logger_name=f'{logger_name}_disabled-{"-".join(disabled_embeddings)}',
-            disabled_embeddings=disabled_embeddings,
-            batch_size=128,
-            apply_scaling=True,
-            **study.best_params,
-        )
-        # Rename the keys in the metrics dictionary
-        metrics = {k.replace('val_', 'test_'): v for k, v in metrics.items()}
-        metrics['disabled_embeddings'] = 'disabled ' + ' '.join(disabled_embeddings)
-        metrics['model_type'] = 'Pytorch'
-        metrics.update(dfs_stats)
+        disabled_embeddings_str = 'disabled ' + ' '.join(disabled_embeddings)
+        test_preds = []
+        for i, model_trainer in enumerate(best_models):
+            logging.info(f'Evaluating model n.{i} on {disabled_embeddings_str}.')
+            model = model_trainer['model']
+            trainer = model_trainer['trainer']
+            _, test_ds, _  = get_datasets(
+                protein2embedding=protein2embedding,
+                cell2embedding=cell2embedding,
+                smiles2fp=smiles2fp,
+                train_df=train_val_df,
+                val_df=test_df,
+                disabled_embeddings=disabled_embeddings,
+                active_label=active_label,
+                scaler=model.scalers,
+                use_single_scaler=model.join_embeddings == 'beginning',
+            )
+            ret = evaluate_model(model, trainer, test_ds, batch_size=128)
+            # NOTE: We are passing the test set as the validation set argument
+            # Rename the keys in the metrics dictionary
+            test_preds.append(ret['val_pred'])
+            ret['val_metrics'] = {k.replace('val_', 'test_'): v for k, v in ret['val_metrics'].items()}
+            ret['val_metrics'].update(dfs_stats)
+            ret['val_metrics']['majority_vote'] = False
+            ret['val_metrics']['model_type'] = 'Pytorch'
+            ret['val_metrics']['disabled_embeddings'] = disabled_embeddings_str
+            ablation_report.append(ret['val_metrics'].copy())
 
-        # Add the training metrics        
-        train_metrics = {m: v.item() for m, v in trainer.callback_metrics.items() if 'train' in m}
-        metrics.update(train_metrics)
+        # Get the majority vote for the test predictions
+        if not fast_dev_run:
+            majority_vote_metrics = get_majority_vote_metrics(test_preds, test_df, active_label)
+            majority_vote_metrics.update(dfs_stats)
+            majority_vote_metrics['majority_vote'] = True
+            majority_vote_metrics['model_type'] = 'Pytorch'
+            majority_vote_metrics['disabled_embeddings'] = disabled_embeddings_str
+            ablation_report.append(majority_vote_metrics.copy())
 
-        ablation_report.append(metrics.copy())
+        # _, _, metrics = train_model(
+        #     protein2embedding=protein2embedding,
+        #     cell2embedding=cell2embedding,
+        #     smiles2fp=smiles2fp,
+        #     train_df=train_val_df,
+        #     val_df=test_df,
+        #     fast_dev_run=fast_dev_run,
+        #     active_label=active_label,
+        #     max_epochs=max_epochs,
+        #     use_logger=False,
+        #     logger_save_dir=logger_save_dir,
+        #     logger_name=f'{logger_name}_disabled-{"-".join(disabled_embeddings)}',
+        #     disabled_embeddings=disabled_embeddings,
+        #     batch_size=128,
+        #     apply_scaling=True,
+        #     **study.best_params,
+        # )
+        # # Rename the keys in the metrics dictionary
+        # metrics = {k.replace('val_', 'test_'): v for k, v in metrics.items()}
+        # metrics['disabled_embeddings'] = disabled_embeddings_str
+        # metrics['model_type'] = 'Pytorch'
+        # metrics.update(dfs_stats)
+
+        # # Add the training metrics        
+        # train_metrics = {m: v.item() for m, v in trainer.callback_metrics.items() if 'train' in m}
+        # metrics.update(train_metrics)
+        # ablation_report.append(metrics.copy())
+
     ablation_report = pd.DataFrame(ablation_report)
 
     # Add a column with the split_type to all reports

@@ -3,7 +3,7 @@ import pickle
 import logging
 from typing import Literal, List, Tuple, Optional, Dict
 
-from .protac_dataset import PROTAC_Dataset
+from .protac_dataset import PROTAC_Dataset, get_datasets
 from .config import config
 
 import pandas as pd
@@ -38,7 +38,7 @@ class PROTAC_Predictor(nn.Module):
         dropout: float = 0.2,
         join_embeddings: Literal['beginning', 'concat', 'sum'] = 'sum',
         use_batch_norm: bool = False,
-        disabled_embeddings: list = [],
+        disabled_embeddings: List[Literal['smiles', 'poi', 'e3', 'cell']] = [],
     ):
         """ Initialize the PROTAC model.
         
@@ -69,17 +69,17 @@ class PROTAC_Predictor(nn.Module):
         # and can be summed on a "similar scale".
         if self.join_embeddings != 'beginning':
             if 'poi' not in self.disabled_embeddings:
-                self.poi_emb = nn.Sequential(
+                self.poi_fc = nn.Sequential(
                     nn.Linear(poi_emb_dim, hidden_dim),
                     nn.Softmax(dim=1),
                 )
             if 'e3' not in self.disabled_embeddings:
-                self.e3_emb = nn.Sequential(
+                self.e3_fc = nn.Sequential(
                     nn.Linear(e3_emb_dim, hidden_dim),
                     nn.Softmax(dim=1),
                 )
             if 'cell' not in self.disabled_embeddings:
-                self.cell_emb = nn.Sequential(
+                self.cell_fc = nn.Sequential(
                     nn.Linear(cell_emb_dim, hidden_dim),
                     nn.Softmax(dim=1),
                 )
@@ -95,12 +95,12 @@ class PROTAC_Predictor(nn.Module):
             joint_dim += poi_emb_dim if 'poi' not in self.disabled_embeddings else 0
             joint_dim += e3_emb_dim if 'e3' not in self.disabled_embeddings else 0
             joint_dim += cell_emb_dim if 'cell' not in self.disabled_embeddings else 0
+            self.fc0 = nn.Linear(joint_dim, joint_dim)
         elif self.join_embeddings == 'concat':
             joint_dim = hidden_dim * (4 - len(self.disabled_embeddings))
         elif self.join_embeddings == 'sum':
             joint_dim = hidden_dim
 
-        self.fc0 = nn.Linear(joint_dim, joint_dim)
         self.fc1 = nn.Linear(joint_dim, hidden_dim)
         self.fc2 = nn.Linear(hidden_dim, hidden_dim)
         self.fc3 = nn.Linear(hidden_dim, 1)
@@ -125,11 +125,11 @@ class PROTAC_Predictor(nn.Module):
             x = self.dropout(F.relu(self.fc0(x)))
         else:
             if 'poi' not in self.disabled_embeddings:
-                embeddings.append(self.poi_emb(poi_emb))
+                embeddings.append(self.poi_fc(poi_emb))
             if 'e3' not in self.disabled_embeddings:
-                embeddings.append(self.e3_emb(e3_emb))
+                embeddings.append(self.e3_fc(e3_emb))
             if 'cell' not in self.disabled_embeddings:
-                embeddings.append(self.cell_emb(cell_emb))
+                embeddings.append(self.cell_fc(cell_emb))
             if 'smiles' not in self.disabled_embeddings:
                 embeddings.append(self.smiles_emb(smiles_emb))
             if self.join_embeddings == 'concat':
@@ -163,7 +163,7 @@ class PROTAC_Model(pl.LightningModule):
         train_dataset: PROTAC_Dataset = None,
         val_dataset: PROTAC_Dataset = None,
         test_dataset: PROTAC_Dataset = None,
-        disabled_embeddings: list = [],
+        disabled_embeddings: List[Literal['smiles', 'poi', 'e3', 'cell']] = [],
         apply_scaling: bool = True,
     ):
         """ Initialize the PROTAC Pytorch Lightning model.
@@ -217,7 +217,7 @@ class PROTAC_Model(pl.LightningModule):
             dropout=dropout,
             join_embeddings=join_embeddings,
             use_batch_norm=use_batch_norm,
-            disabled_embeddings=disabled_embeddings,
+            disabled_embeddings=[], # NOTE: This is handled in the PROTAC_Dataset classes
         )
 
         stages = ['train_metrics', 'val_metrics', 'test_metrics']
@@ -429,7 +429,7 @@ def train_model(
         logger_name: str = 'protac',
         enable_checkpointing: bool = False,
         checkpoint_model_name: str = 'protac',
-        disabled_embeddings: List[str] = [],
+        disabled_embeddings: List[Literal['smiles', 'poi', 'e3', 'cell']] = [],
         return_predictions: bool = False,
 ) -> tuple:
     """ Train a PROTAC model using the given datasets and hyperparameters.
@@ -453,31 +453,18 @@ def train_model(
     Returns:
         tuple: The trained model, the trainer, and the metrics.
     """
-    oversampler = SMOTE(k_neighbors=smote_k_neighbors, random_state=42)
-    train_ds = PROTAC_Dataset(
+    train_ds, val_ds, test_ds = get_datasets(
         train_df,
+        val_df,
+        test_df,
         protein2embedding,
         cell2embedding,
         smiles2fp,
         use_smote=use_smote,
-        oversampler=oversampler if use_smote else None,
+        smote_k_neighbors=smote_k_neighbors,
         active_label=active_label,
+        disabled_embeddings=disabled_embeddings,
     )
-    val_ds = PROTAC_Dataset(
-        val_df,
-        protein2embedding,
-        cell2embedding,
-        smiles2fp,
-        active_label=active_label,
-    )
-    if test_df is not None:
-        test_ds = PROTAC_Dataset(
-            test_df,
-            protein2embedding,
-            cell2embedding,
-            smiles2fp,
-            active_label=active_label,
-        )
     loggers = [
         pl.loggers.TensorBoardLogger(
             save_dir=logger_save_dir,
@@ -505,7 +492,7 @@ def train_model(
         ),
         pl.callbacks.EarlyStopping(
             monitor='val_loss',
-            patience=10, # Original: 5
+            patience=5, # Original: 5
             mode='min',
             verbose=False,
         ),
@@ -584,6 +571,36 @@ def train_model(
             return model, trainer, metrics, val_pred, test_pred
         return model, trainer, metrics, val_pred
     return model, trainer, metrics
+
+
+def evaluate_model(
+        model: PROTAC_Model,
+        trainer: pl.Trainer,
+        val_ds: PROTAC_Dataset,
+        test_ds: Optional[PROTAC_Dataset] = None,
+        batch_size: int = 128,
+) -> tuple:
+    """ Evaluate a PROTAC model using the given datasets. """
+    ret = {}
+
+    val_dl = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
+    val_metrics = trainer.validate(model, val_dl, verbose=False)[0]
+    val_metrics = {m: v for m, v in val_metrics.items() if 'val' in m}
+    # Get predictions on validation set
+    val_pred = torch.cat(trainer.predict(model, val_dl)).squeeze()
+    ret['val_metrics'] = val_metrics
+    ret['val_pred'] = val_pred
+
+    if test_ds is not None:
+        test_dl = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
+        test_metrics = trainer.test(model, test_dl, verbose=False)[0]
+        test_metrics = {m: v for m, v in test_metrics.items() if 'test' in m}
+        # Get predictions on test set
+        test_pred = torch.cat(trainer.predict(model, test_dl)).squeeze()
+        ret['test_metrics'] = test_metrics
+        ret['test_pred'] = test_pred
+    
+    return ret
 
 
 def load_model(

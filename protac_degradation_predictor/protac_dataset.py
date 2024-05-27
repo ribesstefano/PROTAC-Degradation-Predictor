@@ -215,40 +215,53 @@ class PROTAC_Dataset(Dataset):
 
     def __getitem__(self, idx):
         if 'smiles' in self.disabled_embeddings:
-            # Uniformly sample a binary vector for the fingerprint
-            smiles_emb = np.random.randint(0, 2, size=self.smiles_emb_dim).astype(np.float32)
-            if not self.use_single_scaler and self.scaler is not None:
-                smiles_emb = smiles_emb[np.newaxis, :]
-                smiles_emb = self.scaler['Smiles'].transform(smiles_emb).flatten()
+            # Get a zero vector for the fingerprint
+            smiles_emb = np.zeros(self.smiles_emb_dim).astype(np.float32)
+
+            # TODO: Remove random sampling in the future
+            # # Uniformly sample a binary vector for the fingerprint
+            # smiles_emb = np.random.randint(0, 2, size=self.smiles_emb_dim).astype(np.float32)
+            # if not self.use_single_scaler and self.scaler is not None:
+            #     smiles_emb = smiles_emb[np.newaxis, :]
+            #     smiles_emb = self.scaler['Smiles'].transform(smiles_emb).flatten()
         else:
             smiles_emb = self.data['Smiles'].iloc[idx]
 
         if 'poi' in self.disabled_embeddings:
-            # Uniformly sample a vector for the protein
-            poi_emb = np.random.rand(self.protein_emb_dim).astype(np.float32)
-            if not self.use_single_scaler and self.scaler is not None:
-                poi_emb = poi_emb[np.newaxis, :]
-                poi_emb = self.scaler['Uniprot'].transform(poi_emb).flatten()
+            poi_emb = np.zeros(self.protein_emb_dim).astype(np.float32)
+
+            # TODO: Remove random sampling in the future
+            # # Uniformly sample a vector for the protein
+            # poi_emb = np.random.rand(self.protein_emb_dim).astype(np.float32)
+            # if not self.use_single_scaler and self.scaler is not None:
+            #     poi_emb = poi_emb[np.newaxis, :]
+            #     poi_emb = self.scaler['Uniprot'].transform(poi_emb).flatten()
         else:
             poi_emb = self.data['Uniprot'].iloc[idx]
 
         if 'e3' in self.disabled_embeddings:
-            # Uniformly sample a vector for the E3 ligase
-            e3_emb = np.random.rand(self.protein_emb_dim).astype(np.float32)
-            if not self.use_single_scaler and self.scaler is not None:
-                # Add extra dimension for compatibility with the scaler
-                e3_emb = e3_emb[np.newaxis, :]
-                e3_emb = self.scaler['E3 Ligase Uniprot'].transform(e3_emb)
-                e3_emb = e3_emb.flatten()
+            e3_emb = np.zeros(self.protein_emb_dim).astype(np.float32)
+
+            # TODO: Remove random sampling in the future
+            # # Uniformly sample a vector for the E3 ligase
+            # e3_emb = np.random.rand(self.protein_emb_dim).astype(np.float32)
+            # if not self.use_single_scaler and self.scaler is not None:
+            #     # Add extra dimension for compatibility with the scaler
+            #     e3_emb = e3_emb[np.newaxis, :]
+            #     e3_emb = self.scaler['E3 Ligase Uniprot'].transform(e3_emb)
+            #     e3_emb = e3_emb.flatten()
         else:
             e3_emb = self.data['E3 Ligase Uniprot'].iloc[idx]
         
         if 'cell' in self.disabled_embeddings:
-            # Uniformly sample a vector for the cell line
-            cell_emb = np.random.rand(self.cell_emb_dim).astype(np.float32)
-            if not self.use_single_scaler and self.scaler is not None:
-                cell_emb = cell_emb[np.newaxis, :]
-                cell_emb = self.scaler['Cell Line Identifier'].transform(cell_emb).flatten()
+            cell_emb = np.zeros(self.cell_emb_dim).astype(np.float32)
+
+            # TODO: Remove random sampling in the future
+            # # Uniformly sample a vector for the cell line
+            # cell_emb = np.random.rand(self.cell_emb_dim).astype(np.float32)
+            # if not self.use_single_scaler and self.scaler is not None:
+            #     cell_emb = cell_emb[np.newaxis, :]
+            #     cell_emb = self.scaler['Cell Line Identifier'].transform(cell_emb).flatten()
         else:
             cell_emb = self.data['Cell Line Identifier'].iloc[idx]
 

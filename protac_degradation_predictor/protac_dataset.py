@@ -167,15 +167,6 @@ class PROTAC_Dataset(Dataset):
             scalers (dict): The scalers for each feature.
             use_single_scaler (bool): Whether to use a single scaler for all features.
         """
-        # TODO: The following check is WRONG: for val and test sets I must NOT
-        # use run the fit_scaling method, but I must use the scalers from the
-        # training set.
-        # if self.use_single_scaler is None:
-        #     raise ValueError(
-        #         "The fit_scaling method must be called before apply_scaling.")
-        # if use_single_scaler != self.use_single_scaler:
-        #     raise ValueError(
-        #         f"The use_single_scaler parameter must be the same as the one used in the fit_scaling method. Got {use_single_scaler}, previously {self.use_single_scaler}.")
         if use_single_scaler:
             embeddings = np.hstack([
                 np.array(self.data['Smiles'].tolist()),
@@ -192,18 +183,30 @@ class PROTAC_Dataset(Dataset):
                 self.active_label: self.data[self.active_label]
             })
         else:
-            self.data['Smiles'] = self.data['Smiles'].apply(lambda x: scalers['Smiles'].transform(x[np.newaxis, :])[0])
+            # NOTE: The fingerprints are already in [0, 1], no need to scale them
+            # self.data['Smiles'] = self.data['Smiles'].apply(lambda x: scalers['Smiles'].transform(x[np.newaxis, :])[0])
             self.data['Uniprot'] = self.data['Uniprot'].apply(lambda x: scalers['Uniprot'].transform(x[np.newaxis, :])[0])
             self.data['E3 Ligase Uniprot'] = self.data['E3 Ligase Uniprot'].apply(lambda x: scalers['E3 Ligase Uniprot'].transform(x[np.newaxis, :])[0])
             self.data['Cell Line Identifier'] = self.data['Cell Line Identifier'].apply(lambda x: scalers['Cell Line Identifier'].transform(x[np.newaxis, :])[0])
 
-    def get_numpy_arrays(self):
-        X = np.hstack([
-            np.array(self.data['Smiles'].tolist()),
-            np.array(self.data['Uniprot'].tolist()),
-            np.array(self.data['E3 Ligase Uniprot'].tolist()),
-            np.array(self.data['Cell Line Identifier'].tolist()),
-        ]).copy()
+    def get_numpy_arrays(self, component: Optional[str] = None) -> Tuple[np.ndarray, np.ndarray]:
+        """ Get the numpy arrays for the dataset.
+
+        Args:
+            component (str): The component to get the numpy arrays for. Defaults to None, i.e., get a single stacked array.
+        
+        Returns:
+            tuple: The numpy arrays for the dataset. The first element is the input array, and the second element is the output array.
+        """
+        if component is not None:
+            X = np.array(self.data[component].tolist()).copy()
+        else:
+            X = np.hstack([
+                np.array(self.data['Smiles'].tolist()),
+                np.array(self.data['Uniprot'].tolist()),
+                np.array(self.data['E3 Ligase Uniprot'].tolist()),
+                np.array(self.data['Cell Line Identifier'].tolist()),
+            ]).copy()
         y = self.data[self.active_label].values.copy()
         return X, y
 

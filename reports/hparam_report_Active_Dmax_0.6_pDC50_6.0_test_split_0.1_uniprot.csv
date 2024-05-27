@@ -1,2 +1,2 @@
 hidden_dim,learning_rate,smote_k_neighbors,use_smote,dropout,use_batch_norm,split_type
-32,0.0005070077389014972,4,True,0.10898770955865923,False,uniprot
+32,0.0006485744798313806,4,True,0.09263762731228274,False,uniprot

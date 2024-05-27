@@ -1,2 +1,2 @@
 hidden_dim,learning_rate,smote_k_neighbors,use_smote,dropout,use_batch_norm,split_type
-256,0.0009609725342470751,8,True,0.2640487682023353,True,tanimoto
+64,0.0007711844442771359,13,False,0.3045354410518719,True,tanimoto

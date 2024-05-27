@@ -4,6 +4,9 @@ from .data_utils import (
     get_fingerprint,
     is_active,
 )
+from .protac_dataset import (
+    PROTAC_Dataset,
+)
 from .pytorch_models import (
     PROTAC_Predictor,
     PROTAC_Model,

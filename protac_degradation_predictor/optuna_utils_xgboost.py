@@ -93,7 +93,7 @@ def train_and_evaluate_xgboost(
     val_pred = model.predict(dval)
     val_pred_binary = (val_pred > 0.5).astype(int)
     metrics = {
-        'val_accuracy': accuracy_score(y_val, val_pred_binary),
+        'val_acc': accuracy_score(y_val, val_pred_binary),
         'val_roc_auc': roc_auc_score(y_val, val_pred),
         'val_precision': precision_score(y_val, val_pred_binary),
         'val_recall': recall_score(y_val, val_pred_binary),
@@ -105,7 +105,7 @@ def train_and_evaluate_xgboost(
         test_pred = model.predict(dtest)
         test_pred_binary = (test_pred > 0.5).astype(int)        
         metrics.update({
-            'test_accuracy': accuracy_score(y_test, test_pred_binary),
+            'test_acc': accuracy_score(y_test, test_pred_binary),
             'test_roc_auc': roc_auc_score(y_test, test_pred),
             'test_precision': precision_score(y_test, test_pred_binary),
             'test_recall': recall_score(y_test, test_pred_binary),

@@ -234,6 +234,18 @@ def pytorch_model_objective(
 
     # Optuna aims to minimize the pytorch_model_objective
     return - val_roc_auc
+    # # Get the majority vote for the test predictions
+    # if test_df is not None and not fast_dev_run:
+    #     majority_vote_metrics = get_majority_vote_metrics(test_preds, test_df, active_label)
+    #     majority_vote_metrics.update(get_dataframe_stats(train_df, val_df, test_df, active_label))
+    #     trial.set_user_attr('majority_vote_metrics', majority_vote_metrics)
+    #     logging.info(f'Majority vote metrics: {majority_vote_metrics}')
+
+    # # Get the average validation accuracy and ROC AUC accross the folds
+    # val_roc_auc = np.mean([r['val_roc_auc'] for r in report])
+
+    # # Optuna aims to minimize the pytorch_model_objective
+    # return - val_roc_auc
 
 
 def hyperparameter_tuning_and_training(

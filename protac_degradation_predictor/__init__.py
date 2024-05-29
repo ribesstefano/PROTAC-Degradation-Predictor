@@ -17,7 +17,9 @@ from .sklearn_models import (
 )
 from .optuna_utils import (
     hyperparameter_tuning_and_training,
-    hyperparameter_tuning_and_training_sklearn,
+)
+from .optuna_utils_xgboost import (
+    xgboost_hyperparameter_tuning_and_training,
 )
 from .protac_degradation_predictor import (
     get_protac_active_proba,

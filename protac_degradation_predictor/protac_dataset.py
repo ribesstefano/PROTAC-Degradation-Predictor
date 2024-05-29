@@ -42,7 +42,11 @@ class PROTAC_Dataset(Dataset):
             cell2embedding (dict): Dictionary of cell line embeddings
             smiles2fp (dict): Dictionary of SMILES to fingerprint
             use_smote (bool): Whether to use SMOTE for oversampling
-            use_ored_activity (bool): Whether to use the 'Active - OR' column
+            oversampler (SMOTE | ADASYN): The oversampler to use
+            active_label (str): The column containing the active/inactive information
+            disabled_embeddings (list): The list of embeddings to disable, i.e., return a zero vector
+            scaler (StandardScaler | dict): The scaler to use for the embeddings
+            use_single_scaler (bool): Whether to use a single scaler for all features
         """
         # Filter out examples with NaN in active_label column
         self.data = protac_df  # [~protac_df[active_label].isna()]
@@ -124,7 +128,7 @@ class PROTAC_Dataset(Dataset):
         self.data = df_smote
 
     def fit_scaling(self, use_single_scaler: bool = False, **scaler_kwargs) -> dict:
-        """ Fit the scalers for the data.
+        """ Fit the scalers for the data and save them in the dataset class.
 
         Args:
             use_single_scaler (bool): Whether to use a single scaler for all features.
@@ -288,8 +292,25 @@ def get_datasets(
         disabled_embeddings: List[Literal['smiles', 'poi', 'e3', 'cell']] = [],
         scaler: Optional[StandardScaler | Dict[str, StandardScaler]] = None,
         use_single_scaler: Optional[bool] = None,
+        apply_scaling: bool = False,
 ) -> Tuple[PROTAC_Dataset, PROTAC_Dataset, Optional[PROTAC_Dataset]]:
-    """ Get the datasets for training the PROTAC model. """
+    """ Get the datasets for training the PROTAC model.
+    
+    Args:
+        train_df (pd.DataFrame): The training data.
+        val_df (pd.DataFrame): The validation data.
+        test_df (pd.DataFrame): The test data.
+        protein2embedding (dict): Dictionary of protein embeddings.
+        cell2embedding (dict): Dictionary of cell line embeddings.
+        smiles2fp (dict): Dictionary of SMILES to fingerprint.
+        use_smote (bool): Whether to use SMOTE for oversampling.
+        smote_k_neighbors (int): The number of neighbors to use for SMOTE.
+        active_label (str): The active label column.
+        disabled_embeddings (list): The list of embeddings to disable.
+        scaler (StandardScaler | dict): The scaler to use for the embeddings.
+        use_single_scaler (bool): Whether to use a single scaler for all features.
+        apply_scaling (bool): Whether to apply scaling to the data now. Defaults to False (the Pytorch Lightning model does that).
+    """
     oversampler = SMOTE(k_neighbors=smote_k_neighbors, random_state=42)
     train_ds = PROTAC_Dataset(
         train_df,
@@ -313,6 +334,10 @@ def get_datasets(
         scaler=train_ds.scaler if train_ds.scaler is not None else scaler,
         use_single_scaler=train_ds.use_single_scaler if train_ds.use_single_scaler is not None else use_single_scaler,
     )
+    train_scalers = None
+    if apply_scaling:
+        train_scalers = train_ds.fit_scaling(use_single_scaler=use_single_scaler)
+        val_ds.apply_scaling(train_scalers, use_single_scaler=use_single_scaler)
     if test_df is not None:
         test_ds = PROTAC_Dataset(
             test_df,
@@ -321,9 +346,11 @@ def get_datasets(
             smiles2fp,
             active_label=active_label,
             disabled_embeddings=disabled_embeddings,
-            scaler=train_ds.scaler if train_ds.scaler is not None else scaler,
+            scaler=train_scalers if apply_scaling else scaler,
             use_single_scaler=train_ds.use_single_scaler if train_ds.use_single_scaler is not None else use_single_scaler,
         )
+        if apply_scaling:
+            test_ds.apply_scaling(train_ds.scaler, use_single_scaler=use_single_scaler)
     else:
         test_ds = None
     return train_ds, val_ds, test_ds

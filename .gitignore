@@ -165,5 +165,6 @@ cython_debug/
 data/uniprot2embedding.h5
 data/PROTAC-DB.csv
 data/PROTAC-Pedia.csv
+data/cellosaurus.txt
 logs/
 notebooks/per-protein*

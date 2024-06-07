@@ -24,11 +24,15 @@ The code for data curation can be found in the Jupyter notebook [`data_curation.
 
 ## 🚀 Installation
 
-To install the package, open your terminal and run the following command:
+To install the package, open your terminal and run the following commands:
 
 ```bash
+git clone https://github.com/ribesstefano/PROTAC-Degradation-Predictor.git
+cd PROTAC-Degradation-Predictor
 pip install .
 ```
+
+The package has been developed on a Linux machine with Python 3.10.8. It is recommended to use a virtual environment to avoid conflicts with other packages.
 
 ## 🎯 Usage
 
@@ -56,9 +60,29 @@ print(f'The given PROTAC is: {"active" if active_protac else "inactive"}')
 
 This example demonstrates how to predict the activity of a PROTAC molecule. The `is_protac_active` function takes the SMILES string of the PROTAC, the E3 ligase, the UniProt ID of the target protein, and the cell line as inputs. It returns whether the PROTAC is active or not.
 
+The function supports batch computation by passing lists of SMILES strings, E3 ligases, UniProt IDs, and cell lines. In this case, it returns a list of booleans indicating the activity of each PROTAC.
+
+
+
+
 ## 📈 Training
 
 The code for training the model can be found in the file [`run_experiments.py`](src/run_experiments.py).
+
+## 📄 Citation
+
+If you use this tool in your research, please cite the following paper:
+
+```
+@misc{ribes2024modeling,
+    title={Modeling PROTAC Degradation Activity with Machine Learning},
+    author={Stefano Ribes and Eva Nittinger and Christian Tyrchan and Rocío Mercado},
+    year={2024},
+    eprint={2406.02637},
+    archivePrefix={arXiv},
+    primaryClass={q-bio.QM}
+}
+```
 
 ## 📜 License
 

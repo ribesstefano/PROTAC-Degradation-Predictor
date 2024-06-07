@@ -3,6 +3,10 @@ from .data_utils import (
     load_cell2embedding,
     get_fingerprint,
     is_active,
+    load_curated_dataset,
+    avail_cell_lines,
+    avail_e3_ligases,
+    avail_uniprots,
 )
 from .protac_dataset import (
     PROTAC_Dataset,

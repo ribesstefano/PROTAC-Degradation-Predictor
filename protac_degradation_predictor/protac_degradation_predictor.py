@@ -1,6 +1,6 @@
 import pkg_resources
 import logging
-from typing import List
+from typing import List, Literal, Dict
 
 from .pytorch_models import PROTAC_Model, load_model
 from .data_utils import (
@@ -20,12 +20,21 @@ def get_protac_active_proba(
         e3_ligase: str | List[str],
         target_uniprot: str | List[str],
         cell_line: str | List[str],
-        device: str = 'cpu',
-) -> bool:
+        device: Literal['cpu', 'cuda'] = 'cpu',
+        use_models_from_cv: bool = False,
+) -> Dict[str, np.ndarray]:
+    """ Predict the probability of a PROTAC being active.
+
+    Args:
+        protac_smiles (str | List[str]): The SMILES of the PROTAC.
+        e3_ligase (str | List[str]): The Uniprot ID of the E3 ligase.
+        target_uniprot (str | List[str]): The Uniprot ID of the target protein.
+        cell_line (str | List[str]): The cell line identifier.
+        device (str): The device to run the model on.
     
-    model_filename = 'best_model_n0_random-epoch=6-val_acc=0.74-val_roc_auc=0.796.ckpt'
-    ckpt_path = pkg_resources.resource_stream(__name__, f'models/{model_filename}')
-    model = load_model(ckpt_path).to(device)
+    Returns:
+        Dict[str, np.ndarray]: The predictions of the model.
+    """
     protein2embedding = load_protein2embedding()
     cell2embedding = load_cell2embedding('data/cell2embedding.pkl')
 
@@ -60,32 +69,47 @@ def get_protac_active_proba(
         smiles_emb = [get_fingerprint(protac_smiles)]
 
     # Convert to torch tensors
-    poi_emb = torch.tensor(poi_emb).to(device)
-    e3_emb = torch.tensor(e3_emb).to(device)
-    cell_emb = torch.tensor(cell_emb).to(device)
-    smiles_emb = torch.tensor(smiles_emb).to(device)
+    poi_emb = torch.tensor(np.array(poi_emb)).to(device)
+    e3_emb = torch.tensor(np.array(e3_emb)).to(device)
+    cell_emb = torch.tensor(np.array(cell_emb)).to(device)
+    smiles_emb = torch.tensor(np.array(smiles_emb)).float().to(device)
 
-    pred = model(
-        poi_emb,
-        e3_emb,
-        cell_emb,
-        smiles_emb,
-        prescaled_embeddings=False, # Trigger automatic scaling
-    )
-
-    if isinstance(protac_smiles, list):
-        return sigmoid(pred).detach().numpy().flatten()
-    else:
-        return sigmoid(pred).item()
+    models = {}
+    model_to_load = 'best_model' if not use_models_from_cv else 'cv_model'
+    # Load all models in pkg_resources that start with 'model_to_load'
+    for model_filename in pkg_resources.resource_listdir(__name__, 'models'):
+        if model_filename.startswith(model_to_load):
+            ckpt_path = pkg_resources.resource_stream(__name__, f'models/{model_filename}')
+            models[ckpt_path] = load_model(ckpt_path).to(device)
+    
+    # Average the predictions of all models
+    preds = {}
+    for ckpt_path, model in models.items():
+        pred = model(
+            poi_emb,
+            e3_emb,
+            cell_emb,
+            smiles_emb,
+            prescaled_embeddings=False, # Normalization performed by the model
+        )
+        preds[ckpt_path] = sigmoid(pred).detach().numpy().flatten()
+    axis = 1 if isinstance(protac_smiles, list) else None
+    return {
+        'preds': np.array(list(preds.values())),
+        'mean': np.mean(list(preds.values()), axis=axis),
+        'majority_vote': np.mean(list(preds.values()), axis=axis) > 0.5,
+    }
 
 
 def is_protac_active(
-        protac_smiles: str,
-        e3_ligase: str,
-        target_uniprot: str,
-        cell_line: str,
+        protac_smiles: str | List[str],
+        e3_ligase: str | List[str],
+        target_uniprot: str | List[str],
+        cell_line: str | List[str],
         device: str = 'cpu',
         proba_threshold: float = 0.5,
+        use_majority_vote: bool = False,
+        use_models_from_cv: bool = False,
 ) -> bool:
     """ Predict whether a PROTAC is active or not.
     
@@ -106,5 +130,9 @@ def is_protac_active(
         target_uniprot,
         cell_line,
         device,
+        use_models_from_cv,
     )
-    return pred > proba_threshold
+    if use_majority_vote:
+        return pred['majority_vote']
+    else:
+        return pred['mean'] > proba_threshold

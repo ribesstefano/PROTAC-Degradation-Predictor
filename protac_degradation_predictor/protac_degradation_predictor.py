@@ -36,7 +36,7 @@ def get_protac_active_proba(
         Dict[str, np.ndarray]: The predictions of the model.
     """
     protein2embedding = load_protein2embedding()
-    cell2embedding = load_cell2embedding('data/cell2embedding.pkl')
+    cell2embedding = load_cell2embedding()
 
     # Setup default embeddings
     default_protein_emb = np.zeros(config.protein_embedding_size)

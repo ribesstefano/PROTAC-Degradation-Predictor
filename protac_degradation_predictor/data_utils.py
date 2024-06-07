@@ -1,7 +1,7 @@
 import os
 import pkg_resources
 import pickle
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 
 from .config import config
 
@@ -61,6 +61,33 @@ def load_cell2embedding(
     return cell2embedding
 
 
+def avail_e3_ligases() -> List[str]:
+    """ Get the available E3 ligases.
+    
+    Returns:
+        List[str]: The available E3 ligases.
+    """
+    return list(config.e3_ligase2uniprot.keys())
+
+
+def avail_cell_lines() -> List[str]:
+    """ Get the available cell lines.
+    
+    Returns:
+        List[str]: The available cell lines.
+    """
+    return list(load_cell2embedding().keys())
+
+
+def avail_uniprots() -> List[str]:
+    """ Get the available Uniprot IDs.
+    
+    Returns:
+        List[str]: The available Uniprot IDs.
+    """
+    return list(load_protein2embedding().keys())
+
+
 def get_fingerprint(smiles: str, morgan_fpgen = None) -> np.ndarray:
     """ Get the Morgan fingerprint of a molecule.
     
@@ -114,3 +141,14 @@ def is_active(
             return True if pDC50 >= pDC50_threshold and Dmax >= Dmax_threshold else False
         else:
             return np.nan
+
+
+def load_curated_dataset() -> pd.DataFrame:
+    """ Load the curated PROTAC dataset as described in the paper: https://arxiv.org/abs/2406.02637
+
+    Returns:
+        pd.DataFrame: The curated PROTAC dataset.
+    """
+    with pkg_resources.resource_stream(__name__, 'data/PROTAC-Degradation-DB.csv') as f:
+        protac_df = pd.read_csv(f)
+    return protac_df

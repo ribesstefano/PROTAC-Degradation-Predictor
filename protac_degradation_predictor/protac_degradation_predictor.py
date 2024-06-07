@@ -92,7 +92,7 @@ def get_protac_active_proba(
             smiles_emb,
             prescaled_embeddings=False, # Normalization performed by the model
         )
-        preds[ckpt_path] = sigmoid(pred).detach().numpy().flatten()
+        preds[ckpt_path] = sigmoid(pred).detach().cpu().numpy().flatten()
     axis = 1 if isinstance(protac_smiles, list) else None
     return {
         'preds': np.array(list(preds.values())),

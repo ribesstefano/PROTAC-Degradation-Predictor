@@ -93,11 +93,12 @@ def get_protac_active_proba(
             prescaled_embeddings=False, # Normalization performed by the model
         )
         preds[ckpt_path] = sigmoid(pred).detach().cpu().numpy().flatten()
-    axis = 1 if isinstance(protac_smiles, list) else None
+    # NOTE: The predictions array has shape: (n_models, batch_size)
+    preds = np.array(list(preds.values()))
     return {
-        'preds': np.array(list(preds.values())),
-        'mean': np.mean(list(preds.values()), axis=axis),
-        'majority_vote': np.mean(list(preds.values()), axis=axis) > 0.5,
+        'preds': preds,
+        'mean': np.mean(preds, axis=0),
+        'majority_vote': np.mean(preds, axis=0) > 0.5,
     }
 
 

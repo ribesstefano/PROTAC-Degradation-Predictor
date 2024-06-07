@@ -19,25 +19,24 @@ memory = Memory(cachedir, verbose=0)
 
 
 @memory.cache
-def load_protein2embedding(
-    embeddings_path: Optional[str] = None,
+def load_cell2embedding(
+        embeddings_path: Optional[str] = None,
 ) -> Dict[str, np.ndarray]:
-    """ Load the protein embeddings from a file.
-
+    """ Load the cell line embeddings from a file.
+    
     Args:
         embeddings_path (str): The path to the embeddings file.
-
+        
     Returns:
-        Dict[str, np.ndarray]: A dictionary of protein embeddings.
+        Dict[str, np.ndarray]: A dictionary of cell line embeddings.
     """
     if embeddings_path is None:
-        embeddings_path = pkg_resources.resource_stream(__name__, 'data/uniprot2embedding.h5')
-    protein2embedding = {}
-    with h5py.File(embeddings_path, "r") as file:
-        for sequence_id in file.keys():
-            embedding = file[sequence_id][:]
-            protein2embedding[sequence_id] = np.array(embedding)
-    return protein2embedding
+        with pkg_resources.resource_stream(__name__, 'data/cell2embedding.pkl') as f:
+            cell2embedding = pickle.load(f)
+    else:
+        with open(embeddings_path, 'rb') as f:
+            cell2embedding = pickle.load(f)
+    return cell2embedding
 
 
 @memory.cache

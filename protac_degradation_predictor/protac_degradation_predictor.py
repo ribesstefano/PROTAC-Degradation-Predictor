@@ -31,6 +31,7 @@ def get_protac_active_proba(
         target_uniprot (str | List[str]): The Uniprot ID of the target protein.
         cell_line (str | List[str]): The cell line identifier.
         device (str): The device to run the model on.
+        use_models_from_cv (bool): Whether to use the models from cross-validation.
     
     Returns:
         Dict[str, np.ndarray]: The predictions of the model.
@@ -98,8 +99,7 @@ def get_protac_active_proba(
     preds = np.array(list(preds.values()))
     mean_preds = np.mean(preds, axis=0)
     # Return a single value if not list as input
-    preds = preds if isinstance(protac_smiles, list) else preds[0]
-    means_preds = mean_preds if isinstance(protac_smiles, list) else mean_preds[0]
+    mean_preds = mean_preds if isinstance(protac_smiles, list) else mean_preds[0]
     
     return {
         'preds': preds,

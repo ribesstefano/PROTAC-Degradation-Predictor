@@ -1,24 +1,38 @@
-![Maturity level-0](https://img.shields.io/badge/Maturity%20Level-ML--0-red)
+<!-- ![Maturity level-0](https://img.shields.io/badge/Maturity%20Level-ML--0-red)
 
-# PROTAC-Degradation-Predictor
+# PROTAC-Degradation-Predictor -->
 
-Predicting PROTAC protein degradation activity via machine learning.
+<p align="center">
+  <img src="https://img.shields.io/badge/Maturity%20Level-ML--0-red" alt="Maturity level-0">
+</p>
 
-## Data Curation
+<h1 align="center">PROTAC-Degradation-Predictor</h1>
 
-For data curation code, please refer to the code in the Jupyter notebooks [`data_curation.ipynb`](notebooks/data_curation.ipynb).
+<p align="center">
+  A machine learning-based tool for predicting PROTAC protein degradation activity.
+</p>
 
-## Installing the Package
+## 📚 Table of Contents
 
-To install the package, run the following command:
+- [Data Curation](#-data-curation)
+- [Installation](#-installation)
+- [Usage](#-usage)
+
+## 📝 Data Curation
+
+The code for data curation can be found in the Jupyter notebook [`data_curation.ipynb`](notebooks/data_curation.ipynb).
+
+## 🚀 Installation
+
+To install the package, open your terminal and run the following command:
 
 ```bash
 pip install .
 ```
 
-## Running the Package
+## 🎯 Usage
 
-To run the package after installation, here is an example snippet:
+After installing the package, you can use it as follows:
 
 ```python
 import protac_degradation_predictor as pdp
@@ -33,16 +47,19 @@ active_protac = pdp.is_protac_active(
     e3_ligase,
     target_uniprot,
     cell_line,
-    device='gpu', # Default to 'cpu'
+    device='cuda', # Default to 'cpu'
     proba_threshold=0.5, # Default value
 )
 
 print(f'The given PROTAC is: {"active" if active_protac else "inactive"}')
 ```
 
-> If you're coming from my [thesis repo](https://github.com/ribesstefano/Machine-Learning-for-Predicting-Targeted-Protein-Degradation), I just wanted to create a separate and "less generic" repo for fast prototyping new ideas.
-> Stefano.
+This example demonstrates how to predict the activity of a PROTAC molecule. The `is_protac_active` function takes the SMILES string of the PROTAC, the E3 ligase, the UniProt ID of the target protein, and the cell line as inputs. It returns whether the PROTAC is active or not.
 
+## 📈 Training
 
+The code for training the model can be found in the file [`run_experiments.py`](src/run_experiments.py).
 
-> Why haven't you trained on more (i.e., the whole) data? We did, and we might just need _way_ more data to get better results...
+## 📜 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

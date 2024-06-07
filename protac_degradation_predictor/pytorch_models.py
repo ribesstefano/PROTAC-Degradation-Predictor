@@ -53,14 +53,6 @@ class PROTAC_Predictor(nn.Module):
             disabled_embeddings (list): List of disabled embeddings. Can be 'poi', 'e3', 'cell', 'smiles'
         """
         super().__init__()
-        self.poi_emb_dim = poi_emb_dim
-        self.e3_emb_dim = e3_emb_dim
-        self.cell_emb_dim = cell_emb_dim
-        self.smiles_emb_dim = smiles_emb_dim
-        self.hidden_dim = hidden_dim
-        self.join_embeddings = join_embeddings
-        self.use_batch_norm = use_batch_norm
-        self.disabled_embeddings = disabled_embeddings
         # Set our init args as class attributes
         self.__dict__.update(locals())
 
@@ -126,12 +118,24 @@ class PROTAC_Predictor(nn.Module):
         else:
             if 'poi' not in self.disabled_embeddings:
                 embeddings.append(self.poi_fc(poi_emb))
+                if torch.isnan(embeddings[-1]).any():
+                    raise ValueError("NaN values found in POI embeddings.")
+                
             if 'e3' not in self.disabled_embeddings:
                 embeddings.append(self.e3_fc(e3_emb))
+                if torch.isnan(embeddings[-1]).any():
+                    raise ValueError("NaN values found in E3 embeddings.")
+            
             if 'cell' not in self.disabled_embeddings:
                 embeddings.append(self.cell_fc(cell_emb))
+                if torch.isnan(embeddings[-1]).any():
+                    raise ValueError("NaN values found in cell embeddings.")
+                
             if 'smiles' not in self.disabled_embeddings:
                 embeddings.append(self.smiles_emb(smiles_emb))
+                if torch.isnan(embeddings[-1]).any():
+                    raise ValueError("NaN values found in SMILES embeddings.")
+                
             if self.join_embeddings == 'concat':
                 x = torch.cat(embeddings, dim=1)
             elif self.join_embeddings == 'sum':
@@ -140,6 +144,8 @@ class PROTAC_Predictor(nn.Module):
                     x = torch.sum(embeddings, dim=1)
                 else:
                     x = embeddings[0]
+        if torch.isnan(x).any():
+            raise ValueError("NaN values found in sum of softmax-ed embeddings.")
         x = F.relu(self.fc1(x))
         x = self.bnorm(x) if self.use_batch_norm else self.self.dropout(x)
         x = self.fc3(x)
@@ -185,19 +191,6 @@ class PROTAC_Model(pl.LightningModule):
             apply_scaling (bool): Whether to apply scaling to the embeddings
         """
         super().__init__()
-        self.poi_emb_dim = poi_emb_dim
-        self.e3_emb_dim = e3_emb_dim
-        self.cell_emb_dim = cell_emb_dim
-        self.smiles_emb_dim = smiles_emb_dim
-        self.hidden_dim = hidden_dim
-        self.batch_size = batch_size
-        self.learning_rate = learning_rate
-        self.join_embeddings = join_embeddings
-        self.train_dataset = train_dataset
-        self.val_dataset = val_dataset
-        self.test_dataset = test_dataset
-        self.disabled_embeddings = disabled_embeddings
-        self.apply_scaling = apply_scaling
         # Set our init args as class attributes
         self.__dict__.update(locals())  # Add arguments as attributes
         # Save the arguments passed to init
@@ -265,6 +258,7 @@ class PROTAC_Model(pl.LightningModule):
             self,
             tensor: torch.Tensor,
             scaler: StandardScaler,
+            alpha: float = 1e-10,
     ) -> torch.Tensor:
         """Scale a tensor using a scaler. This is done to avoid using numpy
         arrays (and stay on the same device).
@@ -280,7 +274,7 @@ class PROTAC_Model(pl.LightningModule):
         if scaler.with_mean:
             tensor -= torch.tensor(scaler.mean_, dtype=tensor.dtype, device=tensor.device)
         if scaler.with_std:
-            tensor /= torch.tensor(scaler.scale_, dtype=tensor.dtype, device=tensor.device)
+            tensor /= torch.tensor(scaler.scale_, dtype=tensor.dtype, device=tensor.device) + alpha
         return tensor
 
     def forward(self, poi_emb, e3_emb, cell_emb, smiles_emb, prescaled_embeddings=True):
@@ -300,6 +294,14 @@ class PROTAC_Model(pl.LightningModule):
                     e3_emb = self.scale_tensor(e3_emb, self.scalers['E3 Ligase Uniprot'])
                     cell_emb = self.scale_tensor(cell_emb, self.scalers['Cell Line Identifier'])
                     smiles_emb = self.scale_tensor(smiles_emb, self.scalers['Smiles'])
+        if torch.isnan(poi_emb).any():
+            raise ValueError("NaN values found in POI embeddings.")
+        if torch.isnan(e3_emb).any():
+            raise ValueError("NaN values found in E3 embeddings.")
+        if torch.isnan(cell_emb).any():
+            raise ValueError("NaN values found in cell embeddings.")
+        if torch.isnan(smiles_emb).any():
+            raise ValueError("NaN values found in SMILES embeddings.")
         return self.model(poi_emb, e3_emb, cell_emb, smiles_emb)
 
     def step(self, batch, batch_idx, stage):
@@ -624,5 +626,4 @@ def load_model(
     # with other datasets...
     # if model.apply_scaling:
     #     model.apply_scalers()
-    model.eval()
-    return model
+    return model.eval()

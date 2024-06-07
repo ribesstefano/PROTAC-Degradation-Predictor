@@ -104,7 +104,7 @@ def get_majority_vote_metrics(
         'test_roc_auc': AUROC(task='binary')(test_preds, y).item(),
         'test_precision': Precision(task='binary')(test_preds, y).item(),
         'test_recall': Recall(task='binary')(test_preds, y).item(),
-        'test_f1': F1Score(task='binary')(test_preds, y).item(),
+        'test_f1_score': F1Score(task='binary')(test_preds, y).item(),
     }
     return majority_vote_metrics
 

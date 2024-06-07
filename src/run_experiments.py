@@ -8,7 +8,6 @@ from typing import Literal
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import protac_degradation_predictor as pdp
-from protac_degradation_predictor.optuna_utils import get_dataframe_stats
 
 import pytorch_lightning as pl
 from rdkit import Chem

@@ -331,7 +331,6 @@ def main():
         ]),
     }
 
-
     for split_type in ['random', 'tanimoto', 'uniprot']:
         split_metrics = []
         for i in range(n_models_for_test):

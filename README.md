@@ -33,7 +33,7 @@ The package has been developed on a Linux machine with Python 3.10.8. It is reco
 
 ## 🎯 Usage
 
-For a thorough explanation on how to use the package, please refer to the tutorial notebook [`protac_degradation_tutorial.ipynb`](notebooks/protac_degradation_tutorial.ipynb).
+For a thorough explanation on how to use the package, please refer to the tutorial notebook [`protac_degradation_predictor_tutorial.ipynb`](notebooks/protac_degradation_predictor_tutorial.ipynb).
 
 After installing the package, you can use it as follows:
 

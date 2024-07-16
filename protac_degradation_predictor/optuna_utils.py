@@ -9,25 +9,11 @@ from .pytorch_models import (
 )
 from .protac_dataset import get_datasets
 
-from .sklearn_models import (
-    train_sklearn_model,
-    suggest_random_forest,
-    suggest_logistic_regression,
-    suggest_svc,
-    suggest_gradient_boosting,
-)
-
 import torch
 import optuna
 from optuna.samplers import TPESampler
 import joblib
 import pandas as pd
-from sklearn.ensemble import (
-    RandomForestClassifier,
-    GradientBoostingClassifier,
-)
-from sklearn.linear_model import LogisticRegression
-from sklearn.svm import SVC
 from sklearn.model_selection import (
     StratifiedKFold,
     StratifiedGroupKFold,
@@ -270,14 +256,23 @@ def hyperparameter_tuning_and_training(
     """ Hyperparameter tuning and training of a PROTAC model.
     
     Args:
-        train_df (pd.DataFrame): The training set.
-        val_df (pd.DataFrame): The validation set.
+        protein2embedding (Dict): The protein to embedding dictionary.
+        cell2embedding (Dict): The cell to embedding dictionary.
+        smiles2fp (Dict): The SMILES to fingerprint dictionary.
+        train_val_df (pd.DataFrame): The training and validation set.
         test_df (pd.DataFrame): The test set.
+        kf (StratifiedKFold | StratifiedGroupKFold): The KFold object.
+        groups (np.array): The groups for the StratifiedGroupKFold.
+        split_type (str): The split type.
+        n_models_for_test (int): The number of models to train for the test set.
         fast_dev_run (bool): Whether to run a fast development run.
-        n_trials (int): The number of hyperparameter optimization trials.
-        logger_name (str): The name of the logger.
+        n_trials (int): The number of trials for the hyperparameter search.
+        logger_save_dir (str): The logger save directory.
+        logger_name (str): The logger name.
         active_label (str): The active label column.
-        disabled_embeddings (List[str]): The list of disabled embeddings.
+        max_epochs (int): The maximum number of epochs.
+        study_filename (str): The study filename.
+        force_study (bool): Whether to force the study.
 
     Returns:
         tuple: The trained model, the trainer, and the best metrics.
@@ -508,147 +503,3 @@ def hyperparameter_tuning_and_training(
     if not fast_dev_run:
         ret['majority_vote_report'] = majority_vote_report
     return ret
-
-
-def sklearn_model_objective(
-        trial: optuna.Trial,
-        protein2embedding: Dict,
-        cell2embedding: Dict,
-        smiles2fp: Dict,
-        train_df: pd.DataFrame,
-        val_df: pd.DataFrame,
-        model_type: Literal['RandomForest', 'SVC', 'LogisticRegression', 'GradientBoosting'] = 'RandomForest',
-        active_label: str = 'Active',
-) -> float:
-    """ Objective function for hyperparameter optimization.
-    
-    Args:
-        trial (optuna.Trial): The Optuna trial object.
-        train_df (pd.DataFrame): The training set.
-        val_df (pd.DataFrame): The validation set.
-        model_type (str): The model type.
-        hyperparameters (Dict): The hyperparameters for the model.
-        fast_dev_run (bool): Whether to run a fast development run.
-        active_label (str): The active label column.
-    """
-
-    # Generate the hyperparameters
-    use_single_scaler = trial.suggest_categorical('use_single_scaler', [True, False])
-    if model_type == 'RandomForest':
-        clf = suggest_random_forest(trial)
-    elif model_type == 'SVC':
-        clf = suggest_svc(trial)
-    elif model_type == 'LogisticRegression':
-        clf = suggest_logistic_regression(trial)
-    elif model_type == 'GradientBoosting':
-        clf = suggest_gradient_boosting(trial)
-    else:
-        raise ValueError(f'Invalid model type: {model_type}. Available: RandomForest, SVC, LogisticRegression, GradientBoosting.')
-
-    # Train the model with the current set of hyperparameters
-    _, metrics = train_sklearn_model(
-        clf=clf,
-        protein2embedding=protein2embedding,
-        cell2embedding=cell2embedding,
-        smiles2fp=smiles2fp,
-        train_df=train_df,
-        val_df=val_df,
-        active_label=active_label,
-        use_single_scaler=use_single_scaler,
-    )
-    
-    # Metrics is a dictionary containing at least the validation loss
-    val_acc = metrics['val_acc']
-    val_roc_auc = metrics['val_roc_auc']
-    
-    # Optuna aims to minimize the sklearn_model_objective
-    return - val_acc - val_roc_auc
-
-
-def hyperparameter_tuning_and_training_sklearn(
-        protein2embedding: Dict,
-        cell2embedding: Dict,
-        smiles2fp: Dict,
-        train_df: pd.DataFrame,
-        val_df: pd.DataFrame,
-        test_df: Optional[pd.DataFrame] = None,
-        model_type: Literal['RandomForest', 'SVC', 'LogisticRegression', 'GradientBoosting'] = 'RandomForest',
-        active_label: str = 'Active',
-        n_trials: int = 50,
-        logger_name: str = 'protac_hparam_search_sklearn',
-        study_filename: Optional[str] = None,
-) -> Tuple:
-    """ Hyperparameter tuning and training of a PROTAC model.
-    
-    Args:
-        train_df (pd.DataFrame): The training set.
-        val_df (pd.DataFrame): The validation set.
-        test_df (pd.DataFrame): The test set.
-        model_type (str): The model type.
-        n_trials (int): The number of hyperparameter optimization trials.
-        logger_name (str): The name of the logger. Unused, for compatibility with hyperparameter_tuning_and_training.
-        active_label (str): The active label column.
-
-    Returns:
-        tuple: The trained model and the best metrics.
-    """
-    # Set the verbosity of Optuna
-    optuna.logging.set_verbosity(optuna.logging.WARNING)
-    # Create an Optuna study object
-    sampler = TPESampler(seed=42, multivariate=True)
-    study = optuna.create_study(direction='minimize', sampler=sampler)
-
-    study_loaded = False
-    if study_filename:
-        if os.path.exists(study_filename):
-            study = joblib.load(study_filename)
-            study_loaded = True
-            logging.info(f'Loaded study from {study_filename}')
-    
-    if not study_loaded:
-        study.optimize(
-            lambda trial: sklearn_model_objective(
-                trial=trial,
-                protein2embedding=protein2embedding,
-                cell2embedding=cell2embedding,
-                smiles2fp=smiles2fp,
-                train_df=train_df,
-                val_df=val_df,
-                model_type=model_type,
-                active_label=active_label,
-            ),
-            n_trials=n_trials,
-        )
-        if study_filename:
-            joblib.dump(study, study_filename)
-    
-    # Retrain the model with the best hyperparameters
-    best_hyperparameters = {k.replace('model_', ''): v for k, v in study.best_params.items() if k.startswith('model_')}
-    if model_type == 'RandomForest':
-        clf = RandomForestClassifier(random_state=42, **best_hyperparameters)
-    elif model_type == 'SVC':
-        clf = SVC(random_state=42, probability=True, **best_hyperparameters)
-    elif model_type == 'LogisticRegression':
-        clf = LogisticRegression(random_state=42, max_iter=1000, **best_hyperparameters)
-    elif model_type == 'GradientBoosting':
-        clf = GradientBoostingClassifier(random_state=42, **best_hyperparameters)
-    else:
-        raise ValueError(f'Invalid model type: {model_type}. Available: RandomForest, SVC, LogisticRegression, GradientBoosting.')
-
-    model, metrics = train_sklearn_model(
-        clf=clf,
-        protein2embedding=protein2embedding,
-        cell2embedding=cell2embedding,
-        smiles2fp=smiles2fp,
-        train_df=train_df,
-        val_df=val_df,
-        test_df=test_df,
-        active_label=active_label,
-        use_single_scaler=study.best_params['use_single_scaler'],
-    )
-
-    # Report the best hyperparameters found
-    metrics.update({f'hparam_{k}': v for k, v in study.best_params.items()})
-
-    # Return the best metrics
-    return model, metrics

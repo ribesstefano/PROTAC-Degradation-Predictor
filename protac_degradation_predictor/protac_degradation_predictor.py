@@ -1,3 +1,4 @@
+import os
 import pkg_resources
 import logging
 from typing import List, Literal, Dict
@@ -13,6 +14,7 @@ from .config import config
 import numpy as np
 import torch
 from torch import sigmoid
+import xgboost as xgb
 
 
 def get_protac_active_proba(
@@ -22,6 +24,7 @@ def get_protac_active_proba(
         cell_line: str | List[str],
         device: Literal['cpu', 'cuda'] = 'cpu',
         use_models_from_cv: bool = False,
+        use_xgboost_models: bool = False,
 ) -> Dict[str, np.ndarray]:
     """ Predict the probability of a PROTAC being active.
 
@@ -69,31 +72,52 @@ def get_protac_active_proba(
         cell_emb = [cell2embedding.get(cell_line, default_cell_emb)]
         smiles_emb = [get_fingerprint(protac_smiles)]
 
+    # Convert to numpy arrays
+    poi_emb = np.array(poi_emb)
+    e3_emb = np.array(e3_emb)
+    cell_emb = np.array(cell_emb)
+    smiles_emb = np.array(smiles_emb)
+
     # Convert to torch tensors
-    poi_emb = torch.tensor(np.array(poi_emb)).to(device)
-    e3_emb = torch.tensor(np.array(e3_emb)).to(device)
-    cell_emb = torch.tensor(np.array(cell_emb)).to(device)
-    smiles_emb = torch.tensor(np.array(smiles_emb)).float().to(device)
+    if not use_xgboost_models:
+        device = torch.device(device)
+        poi_emb = torch.tensor(poi_emb).to(device)
+        e3_emb = torch.tensor(e3_emb).to(device)
+        cell_emb = torch.tensor(cell_emb).to(device)
+        smiles_emb = torch.tensor(smiles_emb).float().to(device)
 
     models = {}
     model_to_load = 'best_model' if not use_models_from_cv else 'cv_model'
     # Load all models in pkg_resources that start with 'model_to_load'
     for model_filename in pkg_resources.resource_listdir(__name__, 'models'):
-        if model_filename.startswith(model_to_load):
-            ckpt_path = pkg_resources.resource_stream(__name__, f'models/{model_filename}')
-            models[ckpt_path] = load_model(ckpt_path).to(device)
+        if model_to_load not in model_filename:
+            continue
+        if not use_xgboost_models:
+            if 'xgboost' not in model_filename:
+                ckpt_path = pkg_resources.resource_stream(__name__, f'models/{model_filename}')
+                models[ckpt_path] = load_model(ckpt_path).to(device)
+        else:
+            if 'xgboost' in model_filename:
+                json_path = pkg_resources.resource_filename(__name__, f'models/{model_filename}')
+                models[json_path] = xgb.Booster()
+                models[json_path].load_model(json_path)
     
     # Average the predictions of all models
     preds = {}
     for ckpt_path, model in models.items():
-        pred = model(
-            poi_emb,
-            e3_emb,
-            cell_emb,
-            smiles_emb,
-            prescaled_embeddings=False, # Normalization performed by the model
-        )
-        preds[ckpt_path] = sigmoid(pred).detach().cpu().numpy().flatten()
+        if not use_xgboost_models:
+            pred = model(
+                poi_emb,
+                e3_emb,
+                cell_emb,
+                smiles_emb,
+                prescaled_embeddings=False, # Normalization performed by the model
+            )
+            preds[ckpt_path] = sigmoid(pred).detach().cpu().numpy().flatten()
+        else:
+            X = np.hstack([smiles_emb, poi_emb, e3_emb, cell_emb])
+            pred = model.inplace_predict(X, (model.best_iteration, model.best_iteration))
+            preds[ckpt_path] = pred
 
     # NOTE: The predictions array has shape: (n_models, batch_size)
     preds = np.array(list(preds.values()))

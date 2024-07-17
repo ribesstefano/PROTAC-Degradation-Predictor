@@ -90,7 +90,7 @@ def train_and_evaluate_xgboost(
     )
 
     # Evaluate model
-    val_pred = model.predict(dval)
+    val_pred = model.inplace_predict(dval, (model.best_iteration, model.best_iteration))
     val_pred_binary = (val_pred > 0.5).astype(int)
     metrics = {
         'val_acc': accuracy_score(y_val, val_pred_binary),
@@ -102,7 +102,7 @@ def train_and_evaluate_xgboost(
     preds = {'val_pred': val_pred}
 
     if test_df is not None:
-        test_pred = model.predict(dtest)
+        test_pred = model.inplace_predict(dtest, (model.best_iteration, model.best_iteration))
         test_pred_binary = (test_pred > 0.5).astype(int)        
         metrics.update({
             'test_acc': accuracy_score(y_test, test_pred_binary),
@@ -126,6 +126,7 @@ def xgboost_model_objective(
         groups: Optional[np.array] = None,
         active_label: str = 'Active',
         num_boost_round: int = 100,
+        model_name: Optional[str] = None,
 ) -> float:
     """ Objective function for hyperparameter optimization with XGBoost.
     
@@ -136,7 +137,7 @@ def xgboost_model_objective(
         test_df (Optional[pd.DataFrame]): The test data.
         active_label (str): The active label column.
         num_boost_round (int): Maximum number of epochs.
-        use_logger (bool): Whether to use logging.
+        model_name (Optional[str]): The prefix name of the CV models to save, if supplied. Used as: `f"{model_name}_fold_{k}.json"`
     """
     # Suggest hyperparameters to be used across the CV folds
     params = {
@@ -176,7 +177,7 @@ def xgboost_model_objective(
             stats['train_unique_groups'] = len(np.unique(groups[train_index]))
             stats['val_unique_groups'] = len(np.unique(groups[val_index]))
 
-        _, preds, metrics = train_and_evaluate_xgboost(
+        bst, preds, metrics = train_and_evaluate_xgboost(
             protein2embedding=protein2embedding,
             cell2embedding=cell2embedding,
             smiles2fp=smiles2fp,
@@ -189,6 +190,11 @@ def xgboost_model_objective(
         stats.update(metrics)
         report.append(stats.copy())
         val_preds.append(preds['val_pred'])
+
+        if model_name:
+            model_filename = f'{model_name}_fold{k}.json'
+            bst.save_model(model_filename)
+            logging.info(f'CV XGBoost model saved to: {model_filename}')
     
     # Save the report in the trial
     trial.set_user_attr('report', report)
@@ -218,6 +224,7 @@ def xgboost_hyperparameter_tuning_and_training(
         num_boost_round: int = 100,
         study_filename: Optional[str] = None,
         force_study: bool = False,
+        model_name: Optional[str] = None,
 ) -> dict:
     """ Hyperparameter tuning and training of an XGBoost model.
     
@@ -226,7 +233,7 @@ def xgboost_hyperparameter_tuning_and_training(
         test_df (pd.DataFrame): The test data.
         kf (StratifiedKFold): Stratified K-Folds cross-validator.
         groups (Optional[np.array]): Group labels for the samples used while splitting the dataset into train/test set.
-        split_type (str): Type of the data split.
+        split_type (str): Type of the data split. Used for reporting information.
         n_models_for_test (int): Number of models to train for testing.
         fast_dev_run (bool): Whether to run a fast development run.
         n_trials (int): Number of trials for hyperparameter optimization.
@@ -275,6 +282,21 @@ def xgboost_hyperparameter_tuning_and_training(
     cv_report = pd.DataFrame(study.best_trial.user_attrs['report'])
     hparam_report = pd.DataFrame([study.best_params])
 
+    # Train the best CV models and store their models by running the objective
+    if model_name:
+        xgboost_model_objective(
+            trial=study.best_trial,
+            protein2embedding=protein2embedding,
+            cell2embedding=cell2embedding,
+            smiles2fp=smiles2fp,
+            train_val_df=train_val_df,
+            kf=kf,
+            groups=groups,
+            active_label=active_label,
+            num_boost_round=num_boost_round,
+            model_name=f'{model_name}_cv_model_{split_type}',
+        )
+
     # Retrain N models with the best hyperparameters (measure model uncertainty)
     best_models = []
     test_report = []
@@ -303,6 +325,12 @@ def xgboost_hyperparameter_tuning_and_training(
         test_report.append(metrics.copy())
         test_preds.append(torch.tensor(preds['val_pred']))
         best_models.append(model)
+
+        # Save the trained model
+        if model_name:
+            model_filename = f'{model_name}_best_model_{split_type}_n{i}.json'
+            model.save_model(model_filename)
+            logging.info(f'Best XGBoost model saved to: {model_filename}')
     test_report = pd.DataFrame(test_report)
 
     # Get the majority vote for the test predictions

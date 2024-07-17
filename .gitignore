@@ -168,3 +168,4 @@ data/PROTAC-Pedia.csv
 data/cellosaurus.txt
 logs/
 notebooks/per-protein*
+*slurm*.out

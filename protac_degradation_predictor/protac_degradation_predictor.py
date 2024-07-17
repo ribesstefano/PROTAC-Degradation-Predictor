@@ -116,7 +116,8 @@ def get_protac_active_proba(
             preds[ckpt_path] = sigmoid(pred).detach().cpu().numpy().flatten()
         else:
             X = np.hstack([smiles_emb, poi_emb, e3_emb, cell_emb])
-            pred = model.inplace_predict(X, (model.best_iteration, model.best_iteration))
+            # pred = model.inplace_predict(X, (model.best_iteration, model.best_iteration))
+            pred = model.inplace_predict(X)
             preds[ckpt_path] = pred
 
     # NOTE: The predictions array has shape: (n_models, batch_size)

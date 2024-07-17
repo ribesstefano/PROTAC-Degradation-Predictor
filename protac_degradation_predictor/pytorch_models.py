@@ -220,8 +220,6 @@ class PROTAC_Model(pl.LightningModule):
             'precision': Precision(task='binary'),
             'recall': Recall(task='binary'),
             'f1_score': F1Score(task='binary'),
-            # 'opt_score': Accuracy(task='binary') + F1Score(task='binary'),
-            # 'hp_metric': Accuracy(task='binary'),
         }, prefix=s.replace('metrics', '')) for s in stages})
 
         # Misc settings
@@ -451,9 +449,10 @@ def train_model(
         smote_k_neighbors (int): The number of neighbors for the SMOTE oversampler.
         fast_dev_run (bool): Whether to run a fast development run.
         disabled_embeddings (list): The list of disabled embeddings.
+        return_predictions (bool): Whether to return the predictions after the model, trainer, and metrics.
     
     Returns:
-        tuple: The trained model, the trainer, and the metrics.
+        tuple: The trained model, the trainer, and the metrics over the validation and test sets.
     """
     train_ds, val_ds, test_ds = get_datasets(
         train_df,

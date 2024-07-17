@@ -318,6 +318,7 @@ def main(
             num_boost_round=num_boost_round,
             study_filename=f'../reports/study_xgboost_{experiment_name}.pkl',
             force_study=force_study,
+            model_name='../models/xgboost',
         )
 
         # Save the reports to file

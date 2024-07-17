@@ -90,7 +90,7 @@ def train_and_evaluate_xgboost(
     )
 
     # Evaluate model
-    val_pred = model.inplace_predict(dval, (model.best_iteration, model.best_iteration))
+    val_pred = model.inplace_predict(dval)
     val_pred_binary = (val_pred > 0.5).astype(int)
     metrics = {
         'val_acc': accuracy_score(y_val, val_pred_binary),
@@ -102,7 +102,7 @@ def train_and_evaluate_xgboost(
     preds = {'val_pred': val_pred}
 
     if test_df is not None:
-        test_pred = model.inplace_predict(dtest, (model.best_iteration, model.best_iteration))
+        test_pred = model.inplace_predict(dtest)
         test_pred_binary = (test_pred > 0.5).astype(int)        
         metrics.update({
             'test_acc': accuracy_score(y_test, test_pred_binary),

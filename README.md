@@ -1,17 +1,3 @@
----
-
-title: PROTAC-Degradation-Predictor
-emoji: 🧬
-colorFrom: pink
-colorTo: green
-sdk: gradio
-sdk_version: 4.37.2
-app_file: app.py
-pinned: false
-license: mit
-
----
-
 ![Maturity level-0](https://img.shields.io/badge/Maturity%20Level-ML--0-red)
 <a href="https://colab.research.google.com/github/ribesstefano/PROTAC-Degradation-Predictor/blob/main/notebooks/protac_degradation_predictor_tutorial.ipynb" target="_parent"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a>
 [![Open in Spaces](https://huggingface.co/datasets/huggingface/badges/resolve/main/open-in-hf-spaces-sm.svg)](https://huggingface.co/spaces/ailab-bio/PROTAC-Degradation-Predictor)
@@ -75,8 +61,7 @@ The function supports batch computation by passing lists of SMILES strings, E3 l
 
 ## 📈 Training
 
-
-Before running the experiments, here are some required steps to follow (assuming one is in the repository directory already):
+Before running the experiments reported in our work or train on your custom dataset, here are some required steps to follow (assuming one is in the repository directory already):
 1. Download the data from the [Cellosaurus database](https://web.expasy.org/cellosaurus/) and save it in the `data` directory:
 ```bash
 wget https://ftp.expasy.org/databases/cellosaurus/cellosaurus.txt data/
@@ -93,6 +78,10 @@ conda activate protac-degradation-predictor
 4. The code for training the model can be found in the file [`run_experiments.py`](src/run_experiments.py).
 
 (Don't forget to adjust the `PYTHONPATH` environment variable to include the repository directory: `export PYTHONPATH=$PYTHONPATH:/path/to/PROTAC-Degradation-Predictor`)
+
+### Training on Custom Dataset
+
+For training a model on a user-provided dataset, please refer to the guide reported in [this README](src/README.md).
 
 ## 📄 Citation
 

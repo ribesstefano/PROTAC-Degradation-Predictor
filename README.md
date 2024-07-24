@@ -98,6 +98,10 @@ If you use this tool in your research, please cite the following paper:
 }
 ```
 
+The directories [logs](logs/) and [reports](reports/) contain the logs and reports generated during the experiments reported in the paper. Additionally, in [reports](reports/), one can find the pickled Optuna studies for the reported experiments.
+
+The directory [models](models/) contains the trained models for the experiments reported in the paper.
+
 ## 📜 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

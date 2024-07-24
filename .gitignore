@@ -169,3 +169,4 @@ data/cellosaurus.txt
 logs/
 notebooks/per-protein*
 *slurm*.out
+.DS_Store

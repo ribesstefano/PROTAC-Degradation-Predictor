@@ -1,5 +1,7 @@
 from typing import Literal, List, Tuple, Optional, Dict
 from collections import defaultdict
+import random
+import logging
 
 from .data_utils import (
     get_fingerprint,
@@ -24,15 +26,16 @@ class PROTAC_Dataset(Dataset):
     def __init__(
         self,
         protac_df: pd.DataFrame,
-        protein2embedding: Dict,
-        cell2embedding: Dict,
-        smiles2fp: Dict,
+        protein2embedding: Dict[str, np.ndarray],
+        cell2embedding: Dict[str, np.ndarray],
+        smiles2fp: Dict[str, np.ndarray],
         use_smote: bool = False,
         oversampler: Optional[SMOTE | ADASYN] = None,
         active_label: str = 'Active',
         disabled_embeddings: List[Literal['smiles', 'poi', 'e3', 'cell']] = [],
         scaler: Optional[StandardScaler | Dict[str, StandardScaler]] = None,
         use_single_scaler: Optional[bool] = None,
+        shuffle_embedding_prob: float = 0.0,
     ):
         """ Initialize the PROTAC dataset
 
@@ -47,6 +50,7 @@ class PROTAC_Dataset(Dataset):
             disabled_embeddings (list): The list of embeddings to disable, i.e., return a zero vector
             scaler (StandardScaler | dict): The scaler to use for the embeddings
             use_single_scaler (bool): Whether to use a single scaler for all features
+            shuffle_embedding_prob (float): The probability of shuffling the embeddings. Used for testing whether embeddings act as "barcodes". Defaults to 0.0, i.e., no shuffling.
         """
         # Filter out examples with NaN in active_label column
         self.data = protac_df  # [~protac_df[active_label].isna()]
@@ -84,6 +88,22 @@ class PROTAC_Dataset(Dataset):
         self.oversampler = oversampler
         if self.use_smote:
             self.apply_smote()
+        
+        if shuffle_embedding_prob > 0.0:
+            self.shuffle_embedding_prob = shuffle_embedding_prob
+            # Set random seed
+            random.seed(42)
+            if self.protein_emb_dim != self.cell_emb_dim:
+                logging.warning('Protein and cell embeddings have different dimensions. Shuffling will be on POI and E3 embeddings only.')
+    
+    def get_smiles_emb_dim(self):
+        return self.smiles_emb_dim
+
+    def get_protein_emb_dim(self):
+        return self.protein_emb_dim
+    
+    def get_cell_emb_dim(self):
+        return self.cell_emb_dim
 
     def apply_smote(self):
         # Prepare the dataset for SMOTE
@@ -269,6 +289,17 @@ class PROTAC_Dataset(Dataset):
         else:
             cell_emb = self.data['Cell Line Identifier'].iloc[idx]
 
+        # Shuffle the embeddings if the probability is met
+        if random.random() < self.shuffle_embedding_prob:
+            if self.protein_emb_dim == self.cell_emb_dim:
+                # Randomly shuffle the embeddings for POI, cell, and E3
+                embeddings = np.vstack([poi_emb, e3_emb, cell_emb])
+                np.random.shuffle(embeddings)
+                poi_emb, e3_emb, cell_emb = embeddings
+            else:
+                # Swap POI and E3 embeddings only, because of different dimensions
+                poi_emb, e3_emb = e3_emb, poi_emb
+
         elem = {
             'smiles_emb': smiles_emb,
             'poi_emb': poi_emb,
@@ -293,6 +324,7 @@ def get_datasets(
         scaler: Optional[StandardScaler | Dict[str, StandardScaler]] = None,
         use_single_scaler: Optional[bool] = None,
         apply_scaling: bool = False,
+        shuffle_embedding_prob: float = 0.0,
 ) -> Tuple[PROTAC_Dataset, PROTAC_Dataset, Optional[PROTAC_Dataset]]:
     """ Get the datasets for training the PROTAC model.
     
@@ -323,6 +355,7 @@ def get_datasets(
         disabled_embeddings=disabled_embeddings,
         scaler=scaler,
         use_single_scaler=use_single_scaler,
+        shuffle_embedding_prob=shuffle_embedding_prob,
     )
     val_ds = PROTAC_Dataset(
         val_df,

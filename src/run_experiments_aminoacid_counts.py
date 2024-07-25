@@ -17,18 +17,16 @@ from jsonargparse import CLI
 import pandas as pd
 from tqdm import tqdm
 import numpy as np
-from sklearn.preprocessing import OrdinalEncoder
 from sklearn.model_selection import (
     StratifiedKFold,
     StratifiedGroupKFold,
 )
-from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder
+from sklearn.feature_extraction.text import CountVectorizer
 
 # Ignore UserWarning from Matplotlib
 warnings.filterwarnings("ignore", ".*FixedLocator*")
 # Ignore UserWarning from PyTorch Lightning
 warnings.filterwarnings("ignore", ".*does not have many workers.*")
-
 
 root = logging.getLogger()
 root.setLevel(logging.DEBUG)
@@ -70,12 +68,24 @@ def main(
     protein2embedding = pdp.load_protein2embedding('../data/uniprot2embedding.h5')
     cell2embedding = pdp.load_cell2embedding('../data/cell2embedding.pkl')
 
-    # Get one-hot encoded embeddings for cell lines
-    onehotenc = OneHotEncoder(sparse_output=False)
-    cell_embeddings = onehotenc.fit_transform(
-        np.array(list(cell2embedding.keys())).reshape(-1, 1)
-    )
-    cell2embedding = {k: v for k, v in zip(cell2embedding.keys(), cell_embeddings)}
+    # Create a new protein2embedding dictionary with amino acid sequence
+    protac_df = pdp.load_curated_dataset()
+    # Create the dictionary mapping 'Uniprot' to 'POI Sequence'
+    protein2embedding = protac_df.set_index('Uniprot')['POI Sequence'].to_dict()
+    # Create the dictionary mapping 'E3 Ligase Uniprot' to 'E3 Ligase Sequence'
+    e32seq = protac_df.set_index('E3 Ligase Uniprot')['E3 Ligase Sequence'].to_dict()
+    # Merge the two dictionaries into a new protein2embedding dictionary
+    protein2embedding.update(e32seq)
+
+    # Get count vectorized embeddings for proteins
+    # NOTE: Check that the protein2embedding is a dictionary of strings
+    if not all(isinstance(k, str) for k in protein2embedding.keys()):
+        raise ValueError("All keys in `protein2embedding` must be strings.")
+    countvec = CountVectorizer(ngram_range=(1,1), analyzer='char')
+    protein_embeddings = countvec.fit_transform(
+        list(protein2embedding.keys())
+    ).toarray()
+    protein2embedding = {k: v for k, v in zip(protein2embedding.keys(), protein_embeddings)}
 
     studies_dir = '../data/studies'
     train_val_perc = f'{int((1 - test_split) * 100)}'
@@ -131,14 +141,14 @@ def main(
             logger_save_dir='../logs',
             logger_name=f'logs_{experiment_name}',
             active_label=active_col,
-            study_filename=f'../reports/study_cellsonehot_{experiment_name}.pkl',
+            study_filename=f'../reports/study_aminoacidcnt_{experiment_name}.pkl',
             force_study=force_study,
-            use_cells_one_hot=True,
+            use_amino_acid_count=True,
         )
 
         # Save the reports to file
         for report_name, report in optuna_reports.items():
-            report.to_csv(f'../reports/cellsonehot_{report_name}_{experiment_name}.csv', index=False)
+            report.to_csv(f'../reports/aminoacidcnt_{report_name}_{experiment_name}.csv', index=False)
             reports[report_name].append(report.copy())
 
 

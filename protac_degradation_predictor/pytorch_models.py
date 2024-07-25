@@ -23,7 +23,8 @@ from torchmetrics import (
     MetricCollection,
 )
 from imblearn.over_sampling import SMOTE
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.feature_extraction.text import CountVectorizer
 
 
 class PROTAC_Predictor(nn.Module):
@@ -402,9 +403,9 @@ class PROTAC_Model(pl.LightningModule):
 
 # TODO: Use some sort of **kwargs to pass all the parameters to the model...
 def train_model(
-        protein2embedding: Dict,
-        cell2embedding: Dict,
-        smiles2fp: Dict,
+        protein2embedding: Dict[str, np.ndarray],
+        cell2embedding: Dict[str, np.ndarray],
+        smiles2fp: Dict[str, np.ndarray],
         train_df: pd.DataFrame,
         val_df: pd.DataFrame,
         test_df: Optional[pd.DataFrame] = None,
@@ -414,10 +415,6 @@ def train_model(
         dropout: float = 0.2,
         max_epochs: int = 50,
         use_batch_norm: bool = False,
-        smiles_emb_dim: int = config.fingerprint_size,
-        poi_emb_dim: int = config.protein_embedding_size,
-        e3_emb_dim: int = config.protein_embedding_size,
-        cell_emb_dim: int = config.cell_embedding_size,
         join_embeddings: Literal['beginning', 'concat', 'sum'] = 'sum',
         smote_k_neighbors:int = 5,
         use_smote: bool = True,
@@ -431,29 +428,61 @@ def train_model(
         checkpoint_model_name: str = 'protac',
         disabled_embeddings: List[Literal['smiles', 'poi', 'e3', 'cell']] = [],
         return_predictions: bool = False,
+        shuffle_embedding_prob: float = 0.0,
+        use_cells_one_hot: bool = False,
+        use_amino_acid_count: bool = False,
 ) -> tuple:
     """ Train a PROTAC model using the given datasets and hyperparameters.
     
     Args:
-        protein2embedding (dict): Dictionary of protein embeddings.
-        cell2embedding (dict): Dictionary of cell line embeddings.
-        smiles2fp (dict): Dictionary of SMILES to fingerprint.
-        train_df (pd.DataFrame): The training set. It must include the following columns: 'Smiles', 'Uniprot', 'E3 Ligase Uniprot', 'Cell Line Identifier', <active_label>.
-        val_df (pd.DataFrame): The validation set.  It must include the following columns: 'Smiles', 'Uniprot', 'E3 Ligase Uniprot', 'Cell Line Identifier', <active_label>.
-        test_df (pd.DataFrame): The test set. If provided, the returned metrics will include test performance.  It must include the following columns: 'Smiles', 'Uniprot', 'E3 Ligase Uniprot', 'Cell Line Identifier', <active_label>.
-        hidden_dim (int): The hidden dimension of the model.
-        batch_size (int): The batch size.
-        learning_rate (float): The learning rate.
-        max_epochs (int): The maximum number of epochs.
-        smiles_emb_dim (int): The dimension of the SMILES embeddings.
-        smote_k_neighbors (int): The number of neighbors for the SMOTE oversampler.
-        fast_dev_run (bool): Whether to run a fast development run.
-        disabled_embeddings (list): The list of disabled embeddings.
-        return_predictions (bool): Whether to return the predictions after the model, trainer, and metrics.
+        protein2embedding (dict): A dictionary mapping protein identifiers to embeddings.
+        cell2embedding (dict): A dictionary mapping cell line identifiers to embeddings.
+        smiles2fp (dict): A dictionary mapping SMILES strings to fingerprints.
+        train_df (pd.DataFrame): The training dataframe.
+        val_df (pd.DataFrame): The validation dataframe.
+        test_df (Optional[pd.DataFrame]): The test dataframe.
+        hidden_dim (int): The hidden dimension of the model
+        batch_size (int): The batch size
+        learning_rate (float): The learning rate
+        dropout (float): The dropout rate
+        max_epochs (int): The maximum number of epochs
+        use_batch_norm (bool): Whether to use batch normalization
+        join_embeddings (Literal['beginning', 'concat', 'sum']): How to join the embeddings
+        smote_k_neighbors (int): The number of neighbors to use in SMOTE
+        use_smote (bool): Whether to use SMOTE
+        apply_scaling (bool): Whether to apply scaling to the embeddings
+        active_label (str): The name of the active label. Default: 'Active'
+        fast_dev_run (bool): Whether to run a fast development run (see PyTorch Lightning documentation)
+        use_logger (bool): Whether to use a logger
+        logger_save_dir (str): The directory to save the logs
+        logger_name (str): The name of the logger
+        enable_checkpointing (bool): Whether to enable checkpointing
+        checkpoint_model_name (str): The name of the model for checkpointing
+        disabled_embeddings (list): List of disabled embeddings. Can be 'poi', 'e3', 'cell', 'smiles'
+        return_predictions (bool): Whether to return predictions on the validation and test sets
     
     Returns:
         tuple: The trained model, the trainer, and the metrics over the validation and test sets.
     """
+    if use_cells_one_hot:
+        # Get one-hot encoded embeddings for cell lines
+        onehotenc = OneHotEncoder(sparse_output=False)
+        cell_embeddings = onehotenc.fit_transform(
+            np.array(list(cell2embedding.keys()))
+        )
+        cell2embedding = {k: v for k, v in zip(cell2embedding.keys(), cell_embeddings)}
+
+    if use_amino_acid_count:
+        # Get count vectorized embeddings for proteins
+        # NOTE: Check that the protein2embedding is a dictionary of strings
+        if not all(isinstance(k, str) for k in protein2embedding.keys()):
+            raise ValueError("All keys in `protein2embedding` must be strings.")
+        countvec = CountVectorizer(ngram_range=(1,1), analyzer='char')
+        protein_embeddings = countvec.fit_transform(
+            list(protein2embedding.keys())
+        )
+        protein2embedding = {k: v for k, v in zip(protein2embedding.keys(), protein_embeddings)}
+
     train_ds, val_ds, test_ds = get_datasets(
         train_df,
         val_df,
@@ -465,7 +494,14 @@ def train_model(
         smote_k_neighbors=smote_k_neighbors,
         active_label=active_label,
         disabled_embeddings=disabled_embeddings,
+        shuffle_embedding_prob=shuffle_embedding_prob,
     )
+    # NOTE: The embeddings dimensions should already match in all sets
+    smiles_emb_dim = train_ds.get_smiles_emb_dim()
+    poi_emb_dim = train_ds.get_protein_emb_dim()
+    e3_emb_dim = train_ds.get_protein_emb_dim()
+    cell_emb_dim = train_ds.get_cell_emb_dim()
+
     loggers = [
         pl.loggers.TensorBoardLogger(
             save_dir=logger_save_dir,

@@ -238,10 +238,15 @@ def main(
     """ Train a PROTAC model using the given datasets and hyperparameters.
     
     Args:
-        use_ored_activity (bool): Whether to use the 'Active - OR' column.
-        n_trials (int): The number of hyperparameter optimization trials.
-        n_splits (int): The number of cross-validation splits.
+        active_col (str): The column containing the active/inactive information. Must be in the format 'Active (Dmax N, pDC50 M)'.
+        n_trials (int): The number of hyperparameter tuning trials to run.
         fast_dev_run (bool): Whether to run a fast development run.
+        test_split (float): The percentage of the active PROTACs to use as the test set.
+        cv_n_splits (int): The number of cross-validation splits to use.
+        max_epochs (int): The maximum number of epochs to train the model.
+        run_sklearn (bool): Whether to run sklearn models.
+        force_study (bool): Whether to force the creation of a new Optuna study.
+        experiments (str): The type of experiments to run.
     """
     pl.seed_everything(42)
 

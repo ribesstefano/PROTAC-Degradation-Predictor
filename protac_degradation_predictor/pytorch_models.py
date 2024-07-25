@@ -23,8 +23,7 @@ from torchmetrics import (
     MetricCollection,
 )
 from imblearn.over_sampling import SMOTE
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.preprocessing import StandardScaler
 
 
 class PROTAC_Predictor(nn.Module):
@@ -429,8 +428,6 @@ def train_model(
         disabled_embeddings: List[Literal['smiles', 'poi', 'e3', 'cell']] = [],
         return_predictions: bool = False,
         shuffle_embedding_prob: float = 0.0,
-        use_cells_one_hot: bool = False,
-        use_amino_acid_count: bool = False,
 ) -> tuple:
     """ Train a PROTAC model using the given datasets and hyperparameters.
     
@@ -464,25 +461,6 @@ def train_model(
     Returns:
         tuple: The trained model, the trainer, and the metrics over the validation and test sets.
     """
-    if use_cells_one_hot:
-        # Get one-hot encoded embeddings for cell lines
-        onehotenc = OneHotEncoder(sparse_output=False)
-        cell_embeddings = onehotenc.fit_transform(
-            np.array(list(cell2embedding.keys()))
-        )
-        cell2embedding = {k: v for k, v in zip(cell2embedding.keys(), cell_embeddings)}
-
-    if use_amino_acid_count:
-        # Get count vectorized embeddings for proteins
-        # NOTE: Check that the protein2embedding is a dictionary of strings
-        if not all(isinstance(k, str) for k in protein2embedding.keys()):
-            raise ValueError("All keys in `protein2embedding` must be strings.")
-        countvec = CountVectorizer(ngram_range=(1,1), analyzer='char')
-        protein_embeddings = countvec.fit_transform(
-            list(protein2embedding.keys())
-        )
-        protein2embedding = {k: v for k, v in zip(protein2embedding.keys(), protein_embeddings)}
-
     train_ds, val_ds, test_ds = get_datasets(
         train_df,
         val_df,

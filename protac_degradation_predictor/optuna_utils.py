@@ -117,6 +117,8 @@ def pytorch_model_objective(
         logger_save_dir: str = 'logs',
         logger_name: str = 'cv_model',
         enable_checkpointing: bool = False,
+        use_cells_one_hot: bool = False,
+        use_amino_acid_count: bool = False,
 ) -> float:
     """ Objective function for hyperparameter optimization.
     
@@ -139,6 +141,8 @@ def pytorch_model_objective(
     learning_rate = trial.suggest_float('learning_rate', *learning_rate_options, log=True)
     smote_k_neighbors = trial.suggest_categorical('smote_k_neighbors', smote_k_neighbors_options)
     use_smote = trial.suggest_categorical('use_smote', [True, False])
+    if use_cells_one_hot or use_amino_acid_count:
+        use_smote = False
     apply_scaling = True # trial.suggest_categorical('apply_scaling', [True, False])
     dropout = trial.suggest_float('dropout', *dropout_options)
     use_batch_norm = trial.suggest_categorical('use_batch_norm', [True, False])
@@ -252,6 +256,8 @@ def hyperparameter_tuning_and_training(
         max_epochs: int = 100,
         study_filename: Optional[str] = None,
         force_study: bool = False,
+        use_cells_one_hot: bool = False,
+        use_amino_acid_count: bool = False,
 ) -> tuple:
     """ Hyperparameter tuning and training of a PROTAC model.
     
@@ -263,7 +269,7 @@ def hyperparameter_tuning_and_training(
         test_df (pd.DataFrame): The test set.
         kf (StratifiedKFold | StratifiedGroupKFold): The KFold object.
         groups (np.array): The groups for the StratifiedGroupKFold.
-        split_type (str): The split type.
+        split_type (str): The split type of the current study. Used for reporting.
         n_models_for_test (int): The number of models to train for the test set.
         fast_dev_run (bool): Whether to run a fast development run.
         n_trials (int): The number of trials for the hyperparameter search.
@@ -322,6 +328,8 @@ def hyperparameter_tuning_and_training(
                 active_label=active_label,
                 max_epochs=max_epochs,
                 disabled_embeddings=[],
+                use_cells_one_hot=use_cells_one_hot,
+                use_amino_acid_count=use_amino_acid_count,
             ),
             n_trials=n_trials,
         )
@@ -354,6 +362,8 @@ def hyperparameter_tuning_and_training(
         logger_save_dir=logger_save_dir,
         logger_name=f'{logger_name}_{split_type}_cv_model',
         enable_checkpointing=True,
+        use_cells_one_hot=use_cells_one_hot,
+        use_amino_acid_count=use_amino_acid_count,
     )
 
     # Retrain N models with the best hyperparameters (measure model uncertainty)

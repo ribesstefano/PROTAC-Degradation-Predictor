@@ -89,8 +89,8 @@ class PROTAC_Dataset(Dataset):
         if self.use_smote:
             self.apply_smote()
         
+        self.shuffle_embedding_prob = shuffle_embedding_prob
         if shuffle_embedding_prob > 0.0:
-            self.shuffle_embedding_prob = shuffle_embedding_prob
             # Set random seed
             random.seed(42)
             if self.protein_emb_dim != self.cell_emb_dim:

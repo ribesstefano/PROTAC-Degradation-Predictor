@@ -207,11 +207,13 @@ class PROTAC_Dataset(Dataset):
                 self.active_label: self.data[self.active_label]
             })
         else:
-            # NOTE: The fingerprints are already in [0, 1], no need to scale them
-            # self.data['Smiles'] = self.data['Smiles'].apply(lambda x: scalers['Smiles'].transform(x[np.newaxis, :])[0])
-            self.data['Uniprot'] = self.data['Uniprot'].apply(lambda x: scalers['Uniprot'].transform(x[np.newaxis, :])[0])
-            self.data['E3 Ligase Uniprot'] = self.data['E3 Ligase Uniprot'].apply(lambda x: scalers['E3 Ligase Uniprot'].transform(x[np.newaxis, :])[0])
-            self.data['Cell Line Identifier'] = self.data['Cell Line Identifier'].apply(lambda x: scalers['Cell Line Identifier'].transform(x[np.newaxis, :])[0])
+            # Check if the self.data[<column>] data contains only binary values
+            # (0 or 1). If so, do not apply scaling.
+            for feature in ['Smiles', 'Uniprot', 'E3 Ligase Uniprot', 'Cell Line Identifier']:
+                feature_array = np.array(self.data[feature].tolist())
+                if np.all(np.isin(feature_array, [0, 1])):
+                    continue
+                self.data[feature] = self.data[feature].apply(lambda x: scalers[feature].transform(x[np.newaxis, :])[0])
 
     def get_numpy_arrays(self, component: Optional[str] = None) -> Tuple[np.ndarray, np.ndarray]:
         """ Get the numpy arrays for the dataset.

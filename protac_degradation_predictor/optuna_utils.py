@@ -141,8 +141,8 @@ def pytorch_model_objective(
     learning_rate = trial.suggest_float('learning_rate', *learning_rate_options, log=True)
     smote_k_neighbors = trial.suggest_categorical('smote_k_neighbors', smote_k_neighbors_options)
     use_smote = trial.suggest_categorical('use_smote', [True, False])
-    if use_cells_one_hot or use_amino_acid_count:
-        use_smote = False
+    # if use_cells_one_hot or use_amino_acid_count:
+    #     use_smote = False
     apply_scaling = True # trial.suggest_categorical('apply_scaling', [True, False])
     dropout = trial.suggest_float('dropout', *dropout_options)
     use_batch_norm = trial.suggest_categorical('use_batch_norm', [True, False])

@@ -94,6 +94,8 @@ def main(
 
     if experiments == 'all':
         experiments = ['standard', 'similarity', 'target']
+    else:
+        experiments = [experiments]
 
     # Cross-Validation Training
     reports = defaultdict(list)

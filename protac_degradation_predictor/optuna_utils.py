@@ -11,7 +11,7 @@ from .protac_dataset import get_datasets
 
 import torch
 import optuna
-from optuna.samplers import TPESampler
+from optuna.samplers import TPESampler, QMCSampler
 import joblib
 import pandas as pd
 from sklearn.model_selection import (
@@ -117,8 +117,6 @@ def pytorch_model_objective(
         logger_save_dir: str = 'logs',
         logger_name: str = 'cv_model',
         enable_checkpointing: bool = False,
-        use_cells_one_hot: bool = False,
-        use_amino_acid_count: bool = False,
 ) -> float:
     """ Objective function for hyperparameter optimization.
     
@@ -135,17 +133,24 @@ def pytorch_model_objective(
         active_label (str): The active label column.
         disabled_embeddings (List[str]): The list of disabled embeddings.
     """
+    # Set fixed hyperparameters
+    batch_size = 128
+    apply_scaling = True # It is dynamically disabled for binary data
+    use_batch_norm = True
+
     # Suggest hyperparameters to be used accross the CV folds
-    hidden_dim = trial.suggest_categorical('hidden_dim', hidden_dim_options)
-    batch_size = 128 # trial.suggest_categorical('batch_size', batch_size_options)
-    learning_rate = trial.suggest_float('learning_rate', *learning_rate_options, log=True)
-    smote_k_neighbors = trial.suggest_categorical('smote_k_neighbors', smote_k_neighbors_options)
-    use_smote = trial.suggest_categorical('use_smote', [True, False])
-    # if use_cells_one_hot or use_amino_acid_count:
-    #     use_smote = False
-    apply_scaling = True # trial.suggest_categorical('apply_scaling', [True, False])
-    dropout = trial.suggest_float('dropout', *dropout_options)
-    use_batch_norm = trial.suggest_categorical('use_batch_norm', [True, False])
+    hidden_dim = trial.suggest_int('hidden_dim', 32, 512, step=32)
+    smote_k_neighbors = trial.suggest_int('smote_k_neighbors', 0, 12)
+    # hidden_dim = trial.suggest_categorical('hidden_dim', hidden_dim_options)
+    # smote_k_neighbors = trial.suggest_categorical('smote_k_neighbors', smote_k_neighbors_options)
+    # dropout = trial.suggest_float('dropout', *dropout_options)
+    # use_batch_norm = trial.suggest_categorical('use_batch_norm', [True, False])
+
+    # Optimizer parameters
+    learning_rate = trial.suggest_float('learning_rate', 1e-6, 1e-1, log=True)
+    beta1 = trial.suggest_float('beta1', 0.1, 0.999)
+    beta2 = trial.suggest_float('beta2', 0.1, 0.999)
+    eps = trial.suggest_float('eps', 1e-9, 1.0, log=True)
 
     # Start the CV over the folds
     X = train_val_df.copy().drop(columns=active_label)
@@ -185,12 +190,13 @@ def pytorch_model_objective(
             hidden_dim=hidden_dim,
             batch_size=batch_size,
             learning_rate=learning_rate,
-            dropout=dropout,
+            beta1=beta1,
+            beta2=beta2,
+            eps=eps,
             use_batch_norm=use_batch_norm,
             max_epochs=max_epochs,
             smote_k_neighbors=smote_k_neighbors,
             apply_scaling=apply_scaling,
-            use_smote=use_smote,
             fast_dev_run=fast_dev_run,
             active_label=active_label,
             return_predictions=True,
@@ -224,18 +230,6 @@ def pytorch_model_objective(
 
     # Optuna aims to minimize the pytorch_model_objective
     return - val_roc_auc
-    # # Get the majority vote for the test predictions
-    # if test_df is not None and not fast_dev_run:
-    #     majority_vote_metrics = get_majority_vote_metrics(test_preds, test_df, active_label)
-    #     majority_vote_metrics.update(get_dataframe_stats(train_df, val_df, test_df, active_label))
-    #     trial.set_user_attr('majority_vote_metrics', majority_vote_metrics)
-    #     logging.info(f'Majority vote metrics: {majority_vote_metrics}')
-
-    # # Get the average validation accuracy and ROC AUC accross the folds
-    # val_roc_auc = np.mean([r['val_roc_auc'] for r in report])
-
-    # # Optuna aims to minimize the pytorch_model_objective
-    # return - val_roc_auc
 
 
 def hyperparameter_tuning_and_training(
@@ -256,8 +250,6 @@ def hyperparameter_tuning_and_training(
         max_epochs: int = 100,
         study_filename: Optional[str] = None,
         force_study: bool = False,
-        use_cells_one_hot: bool = False,
-        use_amino_acid_count: bool = False,
 ) -> tuple:
     """ Hyperparameter tuning and training of a PROTAC model.
     
@@ -285,10 +277,13 @@ def hyperparameter_tuning_and_training(
     """
     pl.seed_everything(42)
 
+    # TODO: Make the following code more modular, i.e., the ranges shall be put
+    # in dictionaries or config files or something like that.
+
     # Define the search space
-    hidden_dim_options = [16, 32, 64, 128, 256] #, 512]
+    hidden_dim_options = [8, 16, 32, 64, 128, 256] #, 512]
     batch_size_options = [128, 128] # [4, 8, 16, 32, 64, 128]
-    learning_rate_options = (1e-6, 1e-3) # min and max values for loguniform distribution
+    learning_rate_options = (1e-6, 1e-1) # min and max values for loguniform distribution
     smote_k_neighbors_options = list(range(3, 16))
     # NOTE: We want Optuna to explore the combination (very low dropout, very
     # small hidden_dim)
@@ -296,8 +291,10 @@ def hyperparameter_tuning_and_training(
 
     # Set the verbosity of Optuna
     optuna.logging.set_verbosity(optuna.logging.WARNING)
+    # Set a quasi-random sampler, as suggested in: https://github.com/google-research/tuning_playbook?tab=readme-ov-file#faqs
+    # sampler = TPESampler(seed=42, multivariate=True)
+    sampler = QMCSampler(qmc_type='halton', scramble=True, seed=42)
     # Create an Optuna study object
-    sampler = TPESampler(seed=42, multivariate=True)
     study = optuna.create_study(direction='minimize', sampler=sampler)
 
     study_loaded = False
@@ -328,8 +325,6 @@ def hyperparameter_tuning_and_training(
                 active_label=active_label,
                 max_epochs=max_epochs,
                 disabled_embeddings=[],
-                use_cells_one_hot=use_cells_one_hot,
-                use_amino_acid_count=use_amino_acid_count,
             ),
             n_trials=n_trials,
         )
@@ -360,10 +355,8 @@ def hyperparameter_tuning_and_training(
         disabled_embeddings=[],
         use_logger=True,
         logger_save_dir=logger_save_dir,
-        logger_name=f'{logger_name}_{split_type}_cv_model',
+        logger_name=f'cv_model_{logger_name}',
         enable_checkpointing=True,
-        use_cells_one_hot=use_cells_one_hot,
-        use_amino_acid_count=use_amino_acid_count,
     )
 
     # Retrain N models with the best hyperparameters (measure model uncertainty)
@@ -385,12 +378,13 @@ def hyperparameter_tuning_and_training(
             disabled_embeddings=[],
             use_logger=True,
             logger_save_dir=logger_save_dir,
-            logger_name=f'{logger_name}_best_model_n{i}',
+            logger_name=f'best_model_n{i}_{logger_name}',
             enable_checkpointing=True,
             checkpoint_model_name=f'best_model_n{i}_{split_type}',
             return_predictions=True,
             batch_size=128,
             apply_scaling=True,
+            use_batch_norm=True,
             **study.best_params,
         )
         # Rename the keys in the metrics dictionary

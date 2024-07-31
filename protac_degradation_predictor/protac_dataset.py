@@ -319,7 +319,6 @@ def get_datasets(
         protein2embedding: Dict = None,
         cell2embedding: Dict = None,
         smiles2fp: Dict = None,
-        use_smote: bool = True,
         smote_k_neighbors: int = 5,
         active_label: str = 'Active',
         disabled_embeddings: List[Literal['smiles', 'poi', 'e3', 'cell']] = [],
@@ -345,14 +344,17 @@ def get_datasets(
         use_single_scaler (bool): Whether to use a single scaler for all features.
         apply_scaling (bool): Whether to apply scaling to the data now. Defaults to False (the Pytorch Lightning model does that).
     """
-    oversampler = SMOTE(k_neighbors=smote_k_neighbors, random_state=42)
+    if smote_k_neighbors:
+        oversampler = SMOTE(k_neighbors=smote_k_neighbors, random_state=42)
+    else:
+        oversampler = None
     train_ds = PROTAC_Dataset(
         train_df,
         protein2embedding,
         cell2embedding,
         smiles2fp,
-        use_smote=use_smote,
-        oversampler=oversampler if use_smote else None,
+        use_smote=True if smote_k_neighbors else False,
+        oversampler=oversampler,
         active_label=active_label,
         disabled_embeddings=disabled_embeddings,
         scaler=scaler,

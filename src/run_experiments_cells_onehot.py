@@ -61,6 +61,7 @@ def main(
         force_study (bool): Whether to force the creation of a new study.
         experiments (str): Type of experiments to run. Options are 'all', 'standard', 'e3_ligase', 'similarity', 'target'.
     """
+    pl.seed_everything(42)
 
     # Make directory ../reports if it does not exist
     if not os.path.exists('../reports'):
@@ -116,7 +117,7 @@ def main(
             group = train_val_df['Uniprot Group'].to_numpy()
 
         # Start the experiment
-        experiment_name = f'{active_name}_test_split_{test_split}_{split_type}'
+        experiment_name = f'{split_type}_{active_name}_test_split_{test_split}'
         optuna_reports = pdp.hyperparameter_tuning_and_training( 
             protein2embedding=protein2embedding,
             cell2embedding=cell2embedding,
@@ -131,11 +132,10 @@ def main(
             n_trials=n_trials,
             max_epochs=max_epochs,
             logger_save_dir='../logs',
-            logger_name=f'logs_{experiment_name}',
+            logger_name=f'cellsonehot_{experiment_name}',
             active_label=active_col,
             study_filename=f'../reports/study_cellsonehot_{experiment_name}.pkl',
             force_study=force_study,
-            use_cells_one_hot=True,
         )
 
         # Save the reports to file

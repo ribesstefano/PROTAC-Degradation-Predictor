@@ -233,7 +233,7 @@ def main(
     max_epochs: int = 100,
     run_sklearn: bool = False,
     force_study: bool = False,
-    experiments: str | Literal['all', 'random', 'e3_ligase', 'tanimoto', 'uniprot'] = 'all',
+    experiments: str | Literal['all', 'standard', 'e3_ligase', 'similarity', 'target'] = 'all',
 ):
     """ Train a PROTAC model using the given datasets and hyperparameters.
     
@@ -250,34 +250,39 @@ def main(
     """
     pl.seed_everything(42)
 
-    # Set the Column to Predict
-    active_name = active_col.replace(' ', '_').replace('(', '').replace(')', '').replace(',', '')
+    # # Set the Column to Predict
+    # active_name = active_col.replace(' ', '_').replace('(', '').replace(')', '').replace(',', '')
 
-    # Get Dmax_threshold from the active_col
-    Dmax_threshold = float(active_col.split('Dmax')[1].split(',')[0].strip('(').strip(')').strip())
-    pDC50_threshold = float(active_col.split('pDC50')[1].strip('(').strip(')').strip())
+    # # Get Dmax_threshold from the active_col
+    # Dmax_threshold = float(active_col.split('Dmax')[1].split(',')[0].strip('(').strip(')').strip())
+    # pDC50_threshold = float(active_col.split('pDC50')[1].strip('(').strip(')').strip())
 
-    # Load the PROTAC dataset
-    protac_df = pd.read_csv('../data/PROTAC-Degradation-DB.csv')
-    # Map E3 Ligase Iap to IAP
-    protac_df['E3 Ligase'] = protac_df['E3 Ligase'].str.replace('Iap', 'IAP')
-    protac_df[active_col] = protac_df.apply(
-        lambda x: pdp.is_active(x['DC50 (nM)'], x['Dmax (%)'], pDC50_threshold=pDC50_threshold, Dmax_threshold=Dmax_threshold), axis=1
-    )
-    smiles2fp, protac_df = get_smiles2fp_and_avg_tanimoto(protac_df)
+    # # Load the PROTAC dataset
+    # protac_df = pd.read_csv('../data/PROTAC-Degradation-DB.csv')
 
-    ## Get the test sets
-    test_indeces = {}
-    active_df = protac_df[protac_df[active_col].notna()].copy()
+    # # Map E3 Ligase Iap to IAP
+    # protac_df['E3 Ligase'] = protac_df['E3 Ligase'].str.replace('Iap', 'IAP')
+    # protac_df[active_col] = protac_df.apply(
+    #     lambda x: pdp.is_active(x['DC50 (nM)'], x['Dmax (%)'], pDC50_threshold=pDC50_threshold, Dmax_threshold=Dmax_threshold), axis=1
+    # )
+    # # Drop duplicates
+    # protac_df = protac_df.drop_duplicates(subset=['Smiles', 'Uniprot', 'E3 Ligase Uniprot', 'Cell Line Identifier', active_col])
+
+    # # Precompute fingerprints and average Tanimoto similarity
+    # smiles2fp, protac_df = get_smiles2fp_and_avg_tanimoto(protac_df)
+
+    # ## Get the test sets
+    # test_indeces = {}
+    # active_df = protac_df[protac_df[active_col].notna()].copy()
     
-    if experiments == 'random' or experiments == 'all':
-        test_indeces['random'] = get_random_split_indices(active_df, test_split)
-    if experiments == 'uniprot' or experiments == 'all':
-        test_indeces['uniprot'] = get_target_split_indices(active_df, active_col, test_split)
-    if experiments == 'e3_ligase' or experiments == 'all':
-        test_indeces['e3_ligase'] = get_e3_ligase_split_indices(active_df)
-    if experiments == 'tanimoto' or experiments == 'all':
-        test_indeces['tanimoto'] = get_tanimoto_split_indices(active_df, active_col, test_split)
+    # if experiments == 'standard' or experiments == 'all':
+    #     test_indeces['standard'] = get_random_split_indices(active_df, test_split)
+    # if experiments == 'target' or experiments == 'all':
+    #     test_indeces['target'] = get_target_split_indices(active_df, active_col, test_split)
+    # if experiments == 'similarity' or experiments == 'all':
+    #     test_indeces['similarity'] = get_tanimoto_split_indices(active_df, active_col, test_split, n_bins_tanimoto=100)
+    # if experiments == 'e3_ligase' or experiments == 'all':
+    #     test_indeces['e3_ligase'] = get_e3_ligase_split_indices(active_df)
 
     # Make directory ../reports if it does not exist
     if not os.path.exists('../reports'):
@@ -287,28 +292,46 @@ def main(
     protein2embedding = pdp.load_protein2embedding('../data/uniprot2embedding.h5')
     cell2embedding = pdp.load_cell2embedding('../data/cell2embedding.pkl')
 
+    studies_dir = '../data/studies'
+    train_val_perc = f'{int((1 - test_split) * 100)}'
+    test_perc = f'{int(test_split * 100)}'
+    active_name = active_col.replace(' ', '_').replace('(', '').replace(')', '').replace(',', '')
+
+    if experiments == 'all':
+        experiments = ['standard', 'similarity', 'target']
+    else:
+        experiments = [experiments]
+
     # Cross-Validation Training
     reports = defaultdict(list)
-    for split_type, indeces in test_indeces.items():
-        test_df = active_df.loc[indeces].copy()
-        train_val_df = active_df[~active_df.index.isin(test_df.index)].copy()
+    for split_type in experiments:
+
+        train_val_filename = f'{split_type}_train_val_{train_val_perc}split_{active_name}.csv'
+        test_filename = f'{split_type}_test_{test_perc}split_{active_name}.csv'
         
+        train_val_df = pd.read_csv(os.path.join(studies_dir, train_val_filename))
+        test_df = pd.read_csv(os.path.join(studies_dir, test_filename))
+
+        # Get SMILES and precompute fingerprints dictionary
+        unique_smiles = pd.concat([train_val_df, test_df])['Smiles'].unique().tolist()
+        smiles2fp = {s: np.array(pdp.get_fingerprint(s)) for s in unique_smiles}
+
         # Get the CV object
-        if split_type == 'random':
+        if split_type == 'standard':
             kf = StratifiedKFold(n_splits=cv_n_splits, shuffle=True, random_state=42)
             group = None
         elif split_type == 'e3_ligase':
             kf = StratifiedKFold(n_splits=cv_n_splits, shuffle=True, random_state=42)
             group = train_val_df['E3 Group'].to_numpy()
-        elif split_type == 'tanimoto':
+        elif split_type == 'similarity':
             kf = StratifiedGroupKFold(n_splits=cv_n_splits, shuffle=True, random_state=42)
             group = train_val_df['Tanimoto Group'].to_numpy()
-        elif split_type == 'uniprot':
+        elif split_type == 'target':
             kf = StratifiedGroupKFold(n_splits=cv_n_splits, shuffle=True, random_state=42)
             group = train_val_df['Uniprot Group'].to_numpy()
 
         # Start the experiment
-        experiment_name = f'{active_name}_test_split_{test_split}_{split_type}'
+        experiment_name = f'{split_type}_{active_name}_test_split_{test_split}'
         optuna_reports = pdp.hyperparameter_tuning_and_training( 
             protein2embedding=protein2embedding,
             cell2embedding=cell2embedding,
@@ -323,7 +346,7 @@ def main(
             n_trials=n_trials,
             max_epochs=max_epochs,
             logger_save_dir='../logs',
-            logger_name=f'logs_{experiment_name}',
+            logger_name=f'{experiment_name}',
             active_label=active_col,
             study_filename=f'../reports/study_{experiment_name}.pkl',
             force_study=force_study,
@@ -333,121 +356,6 @@ def main(
         for report_name, report in optuna_reports.items():
             report.to_csv(f'../reports/{report_name}_{experiment_name}.csv', index=False)
             reports[report_name].append(report.copy())
-
-        # # Start the CV over the folds
-        # X = train_val_df.drop(columns=active_col)
-        # y = train_val_df[active_col].tolist()
-        # for k, (train_index, val_index) in enumerate(kf.split(X, y, group)):
-        #     print('-' * 100)
-        #     print(f'Starting CV for group type: {split_type}, fold: {k}')
-        #     print('-' * 100)
-        #     train_df = train_val_df.iloc[train_index]
-        #     val_df = train_val_df.iloc[val_index]
-
-        #     leaking_uniprot = list(set(train_df['Uniprot']).intersection(set(val_df['Uniprot'])))
-        #     leaking_smiles = list(set(train_df['Smiles']).intersection(set(val_df['Smiles'])))
-
-        #     stats = {
-        #         'fold': k,
-        #         'split_type': split_type,
-        #         'train_len': len(train_df),
-        #         'val_len': len(val_df),
-        #         'train_perc': len(train_df) / len(train_val_df),
-        #         'val_perc': len(val_df) / len(train_val_df),
-        #         'train_active_perc': train_df[active_col].sum() / len(train_df),
-        #         'train_inactive_perc': (len(train_df) - train_df[active_col].sum()) / len(train_df),
-        #         'val_active_perc': val_df[active_col].sum() / len(val_df),
-        #         'val_inactive_perc': (len(val_df) - val_df[active_col].sum()) / len(val_df),
-        #         'test_active_perc': test_df[active_col].sum() / len(test_df),
-        #         'test_inactive_perc': (len(test_df) - test_df[active_col].sum()) / len(test_df),
-        #         'num_leaking_uniprot': len(leaking_uniprot),
-        #         'num_leaking_smiles': len(leaking_smiles),
-        #         'train_leaking_uniprot_perc': len(train_df[train_df['Uniprot'].isin(leaking_uniprot)]) / len(train_df),
-        #         'train_leaking_smiles_perc': len(train_df[train_df['Smiles'].isin(leaking_smiles)]) / len(train_df),
-        #     }
-        #     if split_type != 'random':
-        #         stats['train_unique_groups'] = len(np.unique(group[train_index]))
-        #         stats['val_unique_groups'] = len(np.unique(group[val_index]))
-
-        #     # At each fold, train and evaluate the Pytorch model
-        #     if split_type != 'tanimoto' or run_sklearn:
-        #         logging.info(f'Skipping Pytorch model training on fold {k} with split type {split_type} and test split {test_split}.')
-        #         continue
-        #     else:
-        #         logging.info(f'Starting Pytorch model training on fold {k} with split type {split_type} and test split {test_split}.')
-        #         # Train and evaluate the model
-        #         model, trainer, metrics = pdp.hyperparameter_tuning_and_training(
-        #             protein2embedding,
-        #             cell2embedding,
-        #             smiles2fp,
-        #             train_df,
-        #             val_df,
-        #             test_df,
-        #             fast_dev_run=fast_dev_run,
-        #             n_trials=n_trials,
-        #             logger_name=f'protac_{active_name}_{split_type}_fold_{k}_test_split_{test_split}',
-        #             active_label=active_col,
-        #             study_filename=f'../reports/study_{active_name}_{split_type}_fold_{k}_test_split_{test_split}.pkl',
-        #         )
-        #         hparams = {p.replace('hparam_', ''): v for p, v in stats.items() if p.startswith('hparam_')}
-        #         stats.update(metrics)
-        #         stats['model_type'] = 'Pytorch'
-        #         report.append(stats.copy())
-        #         del model
-        #         del trainer
-
-        #         # Ablation study: disable embeddings at a time
-        #         for disabled_embeddings in [['e3'], ['poi'], ['cell'], ['smiles'], ['e3', 'cell'], ['poi', 'e3', 'cell']]:
-        #             print('-' * 100)
-        #             print(f'Ablation study with disabled embeddings: {disabled_embeddings}')
-        #             print('-' * 100)
-        #             stats['disabled_embeddings'] = 'disabled ' + ' '.join(disabled_embeddings)
-        #             model, trainer, metrics = pdp.train_model(
-        #                 protein2embedding,
-        #                 cell2embedding,
-        #                 smiles2fp,
-        #                 train_df,
-        #                 val_df,
-        #                 test_df,
-        #                 fast_dev_run=fast_dev_run,
-        #                 logger_name=f'protac_{active_name}_{split_type}_fold_{k}_disabled-{"-".join(disabled_embeddings)}',
-        #                 active_label=active_col,
-        #                 disabled_embeddings=disabled_embeddings,
-        #                 **hparams,
-        #             )
-        #             stats.update(metrics)
-        #             report.append(stats.copy())
-        #             del model
-        #             del trainer
-
-        #     # At each fold, train and evaluate sklearn models
-        #     if run_sklearn:
-        #         for model_type in ['RandomForest', 'SVC', 'LogisticRegression', 'GradientBoosting']:
-        #             logging.info(f'Starting sklearn model {model_type} training on fold {k} with split type {split_type} and test split {test_split}.')
-        #             # Train and evaluate sklearn models
-        #             model, metrics = pdp.hyperparameter_tuning_and_training_sklearn(
-        #                 protein2embedding=protein2embedding,
-        #                 cell2embedding=cell2embedding,
-        #                 smiles2fp=smiles2fp,
-        #                 train_df=train_df,
-        #                 val_df=val_df,
-        #                 test_df=test_df,
-        #                 model_type=model_type,
-        #                 active_label=active_col,
-        #                 n_trials=n_trials,
-        #                 study_filename=f'../reports/study_{active_name}_{split_type}_fold_{k}_test_split_{test_split}_{model_type.lower()}.pkl',
-        #             )
-        #             hparams = {p.replace('hparam_', ''): v for p, v in stats.items() if p.startswith('hparam_')}
-        #             stats['model_type'] = model_type
-        #             stats.update(metrics)
-        #             report.append(stats.copy())
-
-        # # Save the report at the end of each split type
-        # report_df = pd.DataFrame(report)
-        # report_df.to_csv(
-        #     f'../reports/cv_report_hparam_search_{cv_n_splits}-splits_{active_name}_test_split_{test_split}{"_sklearn" if run_sklearn else ""}.csv',
-        #     index=False,
-        # )
 
 
 if __name__ == '__main__':

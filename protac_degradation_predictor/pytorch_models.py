@@ -171,6 +171,7 @@ class PROTAC_Model(pl.LightningModule):
         test_dataset: PROTAC_Dataset = None,
         disabled_embeddings: List[Literal['smiles', 'poi', 'e3', 'cell']] = [],
         apply_scaling: bool = True,
+        extra_optim_params: Optional[dict] = None,
     ):
         """ Initialize the PROTAC Pytorch Lightning model.
         
@@ -189,6 +190,7 @@ class PROTAC_Model(pl.LightningModule):
             test_dataset (PROTAC_Dataset): The test dataset
             disabled_embeddings (list): List of disabled embeddings. Can be 'poi', 'e3', 'cell', 'smiles'
             apply_scaling (bool): Whether to apply scaling to the embeddings
+            extra_optim_params (dict): Extra parameters for the optimizer
         """
         super().__init__()
         # Set our init args as class attributes
@@ -328,15 +330,31 @@ class PROTAC_Model(pl.LightningModule):
         return self.step(batch, batch_idx, 'test')
 
     def configure_optimizers(self):
-        optimizer = optim.Adam(self.parameters(), lr=self.learning_rate)
+        # Define optimizer
+        if self.extra_optim_params is not None:
+            optimizer = optim.Adam(self.parameters(), lr=self.learning_rate, **self.extra_optim_params)
+        else:
+            optimizer = optim.Adam(self.parameters(), lr=self.learning_rate)
+        # Define LR scheduler
+        if self.trainer.max_epochs:
+            total_iters = self.trainer.max_epochs
+        elif self.trainer.max_steps:
+            total_iters = self.trainer.max_steps
+        else:
+            total_iters = 20
+        lr_scheduler = optim.lr_scheduler.LinearLR(
+            optimizer=optimizer,
+            total_iters=total_iters,
+        )
+        # lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        #     optimizer=optimizer,
+        #     mode='min',
+        #     factor=0.01,
+        #     patience=0,
+        # )
         return {
             'optimizer': optimizer,
-            'lr_scheduler': optim.lr_scheduler.ReduceLROnPlateau(
-                optimizer=optimizer,
-                mode='min',
-                factor=0.1,
-                patience=0,
-            ),
+            'lr_scheduler': lr_scheduler,
             'interval': 'step',  # or 'epoch'
             'frequency': 1,
             'monitor': 'val_loss',
@@ -411,12 +429,14 @@ def train_model(
         hidden_dim: int = 768,
         batch_size: int = 128,
         learning_rate: float = 2e-5,
+        beta1: float = 0.9,
+        beta2: float = 0.999,
+        eps: float = 1e-8,
         dropout: float = 0.2,
         max_epochs: int = 50,
         use_batch_norm: bool = False,
         join_embeddings: Literal['beginning', 'concat', 'sum'] = 'sum',
-        smote_k_neighbors:int = 5,
-        use_smote: bool = True,
+        smote_k_neighbors: int = 5,
         apply_scaling: bool = True,
         active_label: str = 'Active',
         fast_dev_run: bool = False,
@@ -468,7 +488,6 @@ def train_model(
         protein2embedding,
         cell2embedding,
         smiles2fp,
-        use_smote=use_smote,
         smote_k_neighbors=smote_k_neighbors,
         active_label=active_label,
         disabled_embeddings=disabled_embeddings,
@@ -540,6 +559,10 @@ def train_model(
         devices=1,
         num_nodes=1,
     )
+    extra_optim_params = {
+        'betas': (beta1, beta2),
+        'eps': eps,
+    }
     model = PROTAC_Model(
         hidden_dim=hidden_dim,
         smiles_emb_dim=smiles_emb_dim,
@@ -556,6 +579,7 @@ def train_model(
         val_dataset=val_ds,
         test_dataset=test_ds if test_df is not None else None,
         disabled_embeddings=disabled_embeddings,
+        extra_optim_params=extra_optim_params,
     )
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")

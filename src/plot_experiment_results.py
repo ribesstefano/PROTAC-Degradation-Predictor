@@ -72,7 +72,10 @@ def plot_training_curves(df, split_type, stage='test', multimodels=False, groupb
 def plot_performance_metrics(df_cv, df_test, title=None):
 
     # Extract and prepare CV data
-    cv_data = df_cv[['model_type', 'fold', 'val_acc', 'val_roc_auc', 'test_acc', 'test_roc_auc', 'split_type']]
+    cols = ['model_type', 'fold', 'val_acc', 'val_roc_auc', 'split_type']
+    if 'test_acc' in df_cv.columns:
+        cols.extend(['test_acc', 'test_roc_auc'])
+    cv_data = df_cv[cols]
     cv_data = cv_data.melt(id_vars=['model_type', 'fold', 'split_type'], var_name='Metric', value_name='Score')
     cv_data['Metric'] = cv_data['Metric'].replace({
         'val_acc': 'Validation Accuracy',
@@ -170,7 +173,7 @@ def plot_performance_metrics(df_cv, df_test, title=None):
     plt.savefig(f'plots/{title}.pdf', bbox_inches='tight')
 
 
-def plot_ablation_study(report):
+def plot_ablation_study(report, title=''):
     # Define the ablation study combinations
     ablation_study_combinations = [
         'disabled smiles',
@@ -283,7 +286,7 @@ def plot_ablation_study(report):
             x = 0.4 # p.get_height() - p.get_height() / 2
             plt.annotate(value, (x, y), ha='center', va='center', color='black', fontsize=10, alpha=0.8)
 
-        plt.savefig(f'plots/ablation_study_{group}.pdf', bbox_inches='tight')
+        plt.savefig(f'plots/{title}{group}.pdf', bbox_inches='tight')
 
 
 def plot_majority_voting_performance(df):
@@ -300,93 +303,108 @@ def main():
     cv_n_folds = 5
 
     active_name = active_col.replace(' ', '_').replace('(', '').replace(')', '').replace(',', '')
-    report_base_name = f'{active_name}_test_split_{test_split}'
+    dataset_info = f'{active_name}_test_split_{test_split}'
 
     # Load the data
-    reports = {
-        'cv_train': pd.concat([
-            pd.read_csv(f'reports/cv_report_{report_base_name}_random.csv'),
-            pd.read_csv(f'reports/cv_report_{report_base_name}_uniprot.csv'),
-            pd.read_csv(f'reports/cv_report_{report_base_name}_tanimoto.csv'),
-        ]),
-        'test': pd.concat([
-            pd.read_csv(f'reports/test_report_{report_base_name}_random.csv'),
-            pd.read_csv(f'reports/test_report_{report_base_name}_uniprot.csv'),
-            pd.read_csv(f'reports/test_report_{report_base_name}_tanimoto.csv'),
-        ]),
-        'ablation': pd.concat([
-            pd.read_csv(f'reports/ablation_report_{report_base_name}_random.csv'),
-            pd.read_csv(f'reports/ablation_report_{report_base_name}_uniprot.csv'),
-            pd.read_csv(f'reports/ablation_report_{report_base_name}_tanimoto.csv'),
-        ]),
-        'hparam': pd.concat([
-            pd.read_csv(f'reports/hparam_report_{report_base_name}_random.csv'),
-            pd.read_csv(f'reports/hparam_report_{report_base_name}_uniprot.csv'),
-            pd.read_csv(f'reports/hparam_report_{report_base_name}_tanimoto.csv'),
-        ]),
-        'majority_vote': pd.concat([
-            pd.read_csv(f'reports/majority_vote_report_{report_base_name}_random.csv'),
-            pd.read_csv(f'reports/majority_vote_report_{report_base_name}_uniprot.csv'),
-            pd.read_csv(f'reports/majority_vote_report_{report_base_name}_tanimoto.csv'),
-        ]),
-    }
+    reports = {}
+    for experiment in ['', 'xgboost_', 'cellsonehot_', 'aminoacidcnt_']:
+        reports[f'{experiment}cv_train'] = pd.concat([
+            pd.read_csv(f'reports/{experiment}cv_report_{dataset_info}_standard.csv'),
+            pd.read_csv(f'reports/{experiment}cv_report_{dataset_info}_target.csv'),
+            pd.read_csv(f'reports/{experiment}cv_report_{dataset_info}_similarity.csv'),
+        ])
+        reports[f'{experiment}test'] = pd.concat([
+            pd.read_csv(f'reports/{experiment}test_report_{dataset_info}_standard.csv'),
+            pd.read_csv(f'reports/{experiment}test_report_{dataset_info}_target.csv'),
+            pd.read_csv(f'reports/{experiment}test_report_{dataset_info}_similarity.csv'),
+        ])
+        reports[f'{experiment}hparam'] = pd.concat([
+            pd.read_csv(f'reports/{experiment}hparam_report_{dataset_info}_standard.csv'),
+            pd.read_csv(f'reports/{experiment}hparam_report_{dataset_info}_target.csv'),
+            pd.read_csv(f'reports/{experiment}hparam_report_{dataset_info}_similarity.csv'),
+        ])
+        reports[f'{experiment}majority_vote'] = pd.concat([
+            pd.read_csv(f'reports/{experiment}majority_vote_report_{dataset_info}_standard.csv'),
+            pd.read_csv(f'reports/{experiment}majority_vote_report_{dataset_info}_target.csv'),
+            pd.read_csv(f'reports/{experiment}majority_vote_report_{dataset_info}_similarity.csv'),
+        ])
+        if experiment != 'xgboost_':
+            reports[f'{experiment}ablation'] = pd.concat([
+                pd.read_csv(f'reports/{experiment}ablation_report_{dataset_info}_standard.csv'),
+                pd.read_csv(f'reports/{experiment}ablation_report_{dataset_info}_target.csv'),
+                pd.read_csv(f'reports/{experiment}ablation_report_{dataset_info}_similarity.csv'),
+            ])
 
-    for split_type in ['random', 'tanimoto', 'uniprot']:
-        split_metrics = []
-        for i in range(n_models_for_test):
-            logs_dir = f'logs_{report_base_name}_{split_type}_best_model_n{i}'
-            metrics = pd.read_csv(f'logs/{logs_dir}/{logs_dir}/metrics.csv')
-            metrics['model_id'] = i
-            # Rename 'val_' columns to 'test_' columns
-            metrics = metrics.rename(columns={'val_loss': 'test_loss', 'val_acc': 'test_acc', 'val_roc_auc': 'test_roc_auc'})
-            # plot_training_curves(metrics, f'{split_type}_best_model_n{i}')
-            split_metrics.append(metrics)
-        plot_training_curves(pd.concat(split_metrics), f'{split_type}_best_model', multimodels=True)
+    for experiment in ['', 'xgboost_', 'cellsonehot_', 'aminoacidcnt_']:
+        print('=' * 80)
+        print(f'Experiment: {experiment}')
+        print('=' * 80)
 
-        split_metrics_cv = []
-        for i in range(cv_n_folds):
-            # logs_dir = f'logs_{report_base_name}_{split_type}_best_model_n{i}'
-            logs_dir = f'logs_{report_base_name}_{split_type}_{split_type}_cv_model_fold{i}'
-            metrics = pd.read_csv(f'logs/{logs_dir}/{logs_dir}/metrics.csv')
-            metrics['fold'] = i
-            # plot_training_curves(metrics, f'{split_type}_cv_model_fold{i}', stage='val')
-            split_metrics_cv.append(metrics)
-        plot_training_curves(pd.concat(split_metrics_cv), f'{split_type}_cv_model', stage='val', multimodels=True, groupby='fold')
+        # Plot training curves
+        for split_type in ['standard', 'similarity', 'target']:
+            # Skip XGBoost: we don't have its training curves
+            if experiment != 'xgboost_':
+                # Plot training curves for the best models
+                split_metrics = []
+                for i in range(n_models_for_test):
+                    metrics_dir = f'best_model_n{i}_{experiment}{split_type}_{dataset_info}'
+                    metrics = pd.read_csv(f'logs/{metrics_dir}/{metrics_dir}/metrics.csv')
+                    metrics['model_id'] = i
+                    # Rename 'val_' columns to 'test_' columns
+                    metrics = metrics.rename(columns={'val_loss': 'test_loss', 'val_acc': 'test_acc', 'val_roc_auc': 'test_roc_auc'})
+                    split_metrics.append(metrics)
+                plot_training_curves(pd.concat(split_metrics), f'{experiment}{split_type}_best_model', multimodels=True)
 
-    plot_performance_metrics(
-        reports['cv_train'],
-        reports['test'],
-        title=f'mean_performance-best_models_as_test',
-    )
+                # Plot training curves for the CV models
+                split_metrics_cv = []
+                for i in range(cv_n_folds):
+                    metrics_dir = f'cv_model_{experiment}{split_type}_{dataset_info}_fold{i}'
+                    metrics = pd.read_csv(f'logs/{metrics_dir}/{metrics_dir}/metrics.csv')
+                    metrics['fold'] = i
+                    split_metrics_cv.append(metrics)
+                plot_training_curves(pd.concat(split_metrics_cv), f'{experiment}{split_type}_cv_model', stage='val', multimodels=True, groupby='fold')
 
-    plot_performance_metrics(
-        reports['cv_train'],
-        reports['cv_train'],
-        title=f'mean_performance-cv_models_as_test',
-    )
+        if experiment != 'xgboost_':
+            # Skip XGBoost: we don't have test data for its CV models
+            plot_performance_metrics(
+                reports[f'{experiment}cv_train'],
+                reports[f'{experiment}cv_train'],
+                title=f'{experiment}mean_performance-cv_models_as_test',
+            )
+            plot_performance_metrics(
+                reports[f'{experiment}cv_train'],
+                reports[f'{experiment}majority_vote'][reports[f'{experiment}majority_vote']['cv_models'] == True],
+                title=f'{experiment}majority_vote_performance-cv_models_as_test',
+            )
+            # Skip XGBoost: we don't have its ablation study
+            reports[f'{experiment}test']['disabled_embeddings'] = pd.NA
+            plot_ablation_study(
+                    pd.concat([
+                    reports[f'{experiment}ablation'],
+                    reports[f'{experiment}test'],
+                ]),
+                title=f'{experiment}ablation_study_',
+            )
 
-    plot_performance_metrics(
-        reports['cv_train'],
-        reports['majority_vote'][reports['majority_vote']['cv_models'].isna()],
-        title=f'majority_vote_performance-best_models_as_test',
-    )
+        plot_performance_metrics(
+            reports[f'{experiment}cv_train'],
+            reports[f'{experiment}test'],
+            title=f'{experiment}mean_performance-best_models_as_test',
+        )
 
-    plot_performance_metrics(
-        reports['cv_train'],
-        reports['majority_vote'][reports['majority_vote']['cv_models'] == True],
-        title=f'majority_vote_performance-cv_models_as_test',
-    )
+        # 
+        if experiment == 'xgboost_':
+            df_test = reports[f'{experiment}majority_vote']
+        else:
+            df_test = reports[f'{experiment}majority_vote'][reports[f'{experiment}majority_vote']['cv_models'].isna()]
+        plot_performance_metrics(
+            reports[f'{experiment}cv_train'],
+            df_test,
+            title=f'{experiment}majority_vote_performance-best_models_as_test',
+        )
 
-    # plot_majority_voting_performance(reports['majority_vote'])
-
-    reports['test']['disabled_embeddings'] = pd.NA
-    plot_ablation_study(pd.concat([
-        reports['ablation'],
-        reports['test'],
-    ]))
-
-    # # Plot hyperparameter optimization results to markdown
-    # print(reports['hparam'][['split_type', 'hidden_dim', 'learning_rate', 'dropout', 'use_smote', 'smote_k_neighbors']].to_markdown(index=False))
+        # # Plot hyperparameter optimization results to markdown
+        # print(reports['hparam'][['split_type', 'hidden_dim', 'learning_rate', 'dropout', 'use_smote', 'smote_k_neighbors']].to_markdown(index=False))
 
 
 if __name__ == '__main__':

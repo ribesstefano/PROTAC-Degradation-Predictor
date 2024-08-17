@@ -19,6 +19,8 @@ A machine learning-based tool for predicting PROTAC protein degradation activity
 
 The code for data curation can be found in the Jupyter notebook [`data_curation.ipynb`](notebooks/data_curation.ipynb).
 
+The folder [data/studies](data/studies/) contains the training and test data used in each study reported in our paper. The label column that is used for predictions is named _"Active (Dmax 0.6, pDC50 6.0)"_ and contains binary values.
+
 ## 🚀 Installation
 
 To install the package, open your terminal and run the following commands:

@@ -77,7 +77,7 @@ cp protac_degradation_predictor/data/uniprot2embedding.h5 data/
 conda env create -f environment.yaml
 conda activate protac-degradation-predictor
 ```
-4. The code for training the model can be found in the file [`run_experiments.py`](src/run_experiments.py).
+4. The code for training the PyTorch models can be found in the file [`run_experiments_pytorch.py`](src/run_experiments_pytorch.py).
 
 (Don't forget to adjust the `PYTHONPATH` environment variable to include the repository directory: `export PYTHONPATH=$PYTHONPATH:/path/to/PROTAC-Degradation-Predictor`)
 

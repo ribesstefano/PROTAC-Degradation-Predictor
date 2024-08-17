@@ -346,15 +346,15 @@ def main(
             n_trials=n_trials,
             max_epochs=max_epochs,
             logger_save_dir='../logs',
-            logger_name=f'{experiment_name}',
+            logger_name=f'pytorch_{experiment_name}',
             active_label=active_col,
-            study_filename=f'../reports/study_{experiment_name}.pkl',
+            study_filename=f'../reports/study_pytorch_{experiment_name}.pkl',
             force_study=force_study,
         )
 
         # Save the reports to file
         for report_name, report in optuna_reports.items():
-            report.to_csv(f'../reports/{report_name}_{experiment_name}.csv', index=False)
+            report.to_csv(f'../reports/pytorch_{report_name}_{experiment_name}.csv', index=False)
             reports[report_name].append(report.copy())
 
 

@@ -336,21 +336,21 @@ class PROTAC_Model(pl.LightningModule):
         else:
             optimizer = optim.Adam(self.parameters(), lr=self.learning_rate)
         # Define LR scheduler
-        if self.trainer.max_epochs:
-            total_iters = self.trainer.max_epochs
-        elif self.trainer.max_steps:
-            total_iters = self.trainer.max_steps
-        else:
-            total_iters = 20
-        lr_scheduler = optim.lr_scheduler.LinearLR(
+        lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             optimizer=optimizer,
-            total_iters=total_iters,
+            mode='min',
+            factor=0.1,
+            patience=0,
         )
-        # lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        # if self.trainer.max_epochs:
+        #     total_iters = self.trainer.max_epochs
+        # elif self.trainer.max_steps:
+        #     total_iters = self.trainer.max_steps
+        # else:
+        #     total_iters = 20
+        # lr_scheduler = optim.lr_scheduler.LinearLR(
         #     optimizer=optimizer,
-        #     mode='min',
-        #     factor=0.01,
-        #     patience=0,
+        #     total_iters=total_iters,
         # )
         return {
             'optimizer': optimizer,
@@ -418,6 +418,44 @@ class PROTAC_Model(pl.LightningModule):
                 logging.warning("Scalers not found in checkpoint. Consider re-fitting scalers if necessary.")
 
 
+def get_confidence_scores(true_ds, y_preds, threshold=0.5):
+    # Calculate the likelihood for the false negative: get the mean value of
+    # the prediction for the false-positive and false-negatives
+
+    # Convert PyTorch dataset labels to numpy array
+    if isinstance(true_ds, PROTAC_Dataset):
+        true_vals = np.array([x['active'] for x in true_ds]).flatten()
+    elif isinstance(true_ds, torch.Tensor):
+        true_vals = true_ds.numpy().flatten()
+    elif isinstance(true_ds, np.ndarray):
+        true_vals = true_ds.flatten()
+    else:
+        raise ValueError("Unknown type for true labels.")
+
+    if isinstance(y_preds, torch.Tensor):
+        preds = y_preds.numpy().flatten()
+    elif isinstance(y_preds, np.ndarray):
+        preds = y_preds.flatten()
+    else:
+        raise ValueError("Unknown type for predictions.")
+
+    logging.info(f"True values: {true_vals}")
+    logging.info(f"Predictions: {preds}")
+
+    # Get the indices of the false positives and false negatives
+    false_positives = (true_vals == 0) & ((preds > threshold).astype(int) == 1)
+    false_negatives = (true_vals == 1) & ((preds > threshold).astype(int) == 0)
+
+    logging.info(f"False positives: {false_positives}")
+    logging.info(f"False negatives: {false_negatives}")
+
+    # Get the mean value of the predictions for the false positives and false negatives
+    false_positives_mean = preds[false_positives].mean()
+    false_negatives_mean = preds[false_negatives].mean()
+
+    return false_positives_mean, false_negatives_mean
+
+
 # TODO: Use some sort of **kwargs to pass all the parameters to the model...
 def train_model(
         protein2embedding: Dict[str, np.ndarray],
@@ -448,6 +486,7 @@ def train_model(
         disabled_embeddings: List[Literal['smiles', 'poi', 'e3', 'cell']] = [],
         return_predictions: bool = False,
         shuffle_embedding_prob: float = 0.0,
+        use_smote: bool = False,
 ) -> tuple:
     """ Train a PROTAC model using the given datasets and hyperparameters.
     
@@ -532,7 +571,7 @@ def train_model(
         ),
         pl.callbacks.EarlyStopping(
             monitor='val_acc',
-            patience=10,
+            patience=10, # Original: 10
             mode='max',
             verbose=False,
         ),
@@ -604,9 +643,19 @@ def train_model(
         val_dl = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
         val_pred = trainer.predict(model, val_dl)
         val_pred = torch.concat(trainer.predict(model, val_dl)).squeeze()
+
+        fp_mean, fn_mean = get_confidence_scores(val_ds, val_pred)
+        metrics['val_false_positives_mean'] = fp_mean
+        metrics['val_false_negatives_mean'] = fn_mean
+
         if test_df is not None:
             test_dl = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
             test_pred = torch.concat(trainer.predict(model, test_dl)).squeeze()
+
+            fp_mean, fn_mean = get_confidence_scores(test_ds, test_pred)
+            metrics['test_false_positives_mean'] = fp_mean
+            metrics['test_false_negatives_mean'] = fn_mean
+
             return model, trainer, metrics, val_pred, test_pred
         return model, trainer, metrics, val_pred
     return model, trainer, metrics

@@ -1,11 +1,12 @@
 import os
-from typing import Literal, List, Tuple, Optional, Dict
+from typing import Literal, List, Tuple, Optional, Dict, Any
 import logging
 
 from .pytorch_models import (
     train_model,
     PROTAC_Model,
     evaluate_model,
+    get_confidence_scores,
 )
 from .protac_dataset import get_datasets
 
@@ -81,6 +82,9 @@ def get_majority_vote_metrics(
         active_label: str = 'Active',
 ) -> Dict:
     """ Get the majority vote metrics. """
+    test_preds_mean = np.array(test_preds).mean(axis=0)
+    logging.info(f'Test predictions: {test_preds}')
+    logging.info(f'Test predictions mean: {test_preds_mean}')
     test_preds = torch.stack(test_preds)
     test_preds, _ = torch.mode(test_preds, dim=0)
     y = torch.tensor(test_df[active_label].tolist())
@@ -92,8 +96,23 @@ def get_majority_vote_metrics(
         'test_recall': Recall(task='binary')(test_preds, y).item(),
         'test_f1_score': F1Score(task='binary')(test_preds, y).item(),
     }
+
+    # Get mean predictions
+    fp_mean, fn_mean = get_confidence_scores(y, test_preds_mean)
+    majority_vote_metrics['test_false_negatives_mean'] = fn_mean
+    majority_vote_metrics['test_false_positives_mean'] = fp_mean
+
     return majority_vote_metrics
 
+def get_suggestion(trial, dtype, hparams_range):
+    if dtype == 'int':
+        return trial.suggest_int(**hparams_range)
+    elif dtype == 'float':
+        return trial.suggest_float(**hparams_range)
+    elif dtype == 'categorical':
+        return trial.suggest_categorical(**hparams_range)
+    else:
+        raise ValueError(f'Invalid dtype for trial.suggest: {dtype}')
 
 def pytorch_model_objective(
         trial: optuna.Trial,
@@ -104,11 +123,7 @@ def pytorch_model_objective(
         kf: StratifiedKFold | StratifiedGroupKFold,
         groups: Optional[np.array] = None,
         test_df: Optional[pd.DataFrame] = None,
-        hidden_dim_options: List[int] = [256, 512, 768],
-        batch_size_options: List[int] = [8, 16, 32],
-        learning_rate_options: Tuple[float, float] = (1e-5, 1e-3),
-        smote_k_neighbors_options: List[int] = list(range(3, 16)),
-        dropout_options: Tuple[float, float] = (0.1, 0.5),
+        hparams_ranges: Optional[List[Tuple[str, Dict[str, Any]]]] = None,
         fast_dev_run: bool = False,
         active_label: str = 'Active',
         disabled_embeddings: List[str] = [],
@@ -124,11 +139,8 @@ def pytorch_model_objective(
         trial (optuna.Trial): The Optuna trial object.
         train_df (pd.DataFrame): The training set.
         val_df (pd.DataFrame): The validation set.
-        hidden_dim_options (List[int]): The hidden dimension options.
-        batch_size_options (List[int]): The batch size options.
-        learning_rate_options (Tuple[float, float]): The learning rate options.
-        smote_k_neighbors_options (List[int]): The SMOTE k neighbors options.
-        dropout_options (Tuple[float, float]): The dropout options.
+        hparams_ranges (List[Dict[str, Any]]): NOT IMPLEMENTED YET. Hyperparameters ranges.
+            The list must be of a tuple of the type of hparam to suggest ('int', 'float', or 'categorical'), and the dictionary must contain the arguments of the corresponding trial.suggest method.
         fast_dev_run (bool): Whether to run a fast development run.
         active_label (str): The active label column.
         disabled_embeddings (List[str]): The list of disabled embeddings.
@@ -139,11 +151,14 @@ def pytorch_model_objective(
     use_batch_norm = True
 
     # Suggest hyperparameters to be used accross the CV folds
-    hidden_dim = trial.suggest_int('hidden_dim', 32, 512, step=32)
-    smote_k_neighbors = trial.suggest_int('smote_k_neighbors', 0, 12)
-    # hidden_dim = trial.suggest_categorical('hidden_dim', hidden_dim_options)
-    # smote_k_neighbors = trial.suggest_categorical('smote_k_neighbors', smote_k_neighbors_options)
-    # dropout = trial.suggest_float('dropout', *dropout_options)
+    hidden_dim = trial.suggest_categorical('hidden_dim', [16, 32, 64, 128, 256, 512])
+    smote_k_neighbors = trial.suggest_categorical('smote_k_neighbors', [0] + list(range(3, 16)))
+    # hidden_dim = trial.suggest_int('hidden_dim', 32, 512, step=32)
+    # smote_k_neighbors = trial.suggest_int('smote_k_neighbors', 0, 12)
+
+    # use_smote = trial.suggest_categorical('use_smote', [True, False])
+    # smote_k_neighbors = smote_k_neighbors if use_smote else 0
+    # dropout = trial.suggest_float('dropout', 0, 0.5)
     # use_batch_norm = trial.suggest_categorical('use_batch_norm', [True, False])
 
     # Optimizer parameters
@@ -194,6 +209,7 @@ def pytorch_model_objective(
             beta2=beta2,
             eps=eps,
             use_batch_norm=use_batch_norm,
+            # dropout=dropout,
             max_epochs=max_epochs,
             smote_k_neighbors=smote_k_neighbors,
             apply_scaling=apply_scaling,
@@ -227,6 +243,9 @@ def pytorch_model_objective(
 
     # Get the average validation accuracy and ROC AUC accross the folds
     val_roc_auc = np.mean([r['val_roc_auc'] for r in report])
+    val_acc = np.mean([r['val_acc'] for r in report])
+    logging.info(f'Average val accuracy: {val_acc}')
+    logging.info(f'Average val ROC AUC: {val_roc_auc}')
 
     # Optuna aims to minimize the pytorch_model_objective
     return - val_roc_auc
@@ -240,7 +259,7 @@ def hyperparameter_tuning_and_training(
         test_df: pd.DataFrame,
         kf: StratifiedKFold | StratifiedGroupKFold,
         groups: Optional[np.array] = None,
-        split_type: str = 'random',
+        split_type: str = 'standard',
         n_models_for_test: int = 3,
         fast_dev_run: bool = False,
         n_trials: int = 50,
@@ -279,21 +298,13 @@ def hyperparameter_tuning_and_training(
 
     # TODO: Make the following code more modular, i.e., the ranges shall be put
     # in dictionaries or config files or something like that.
-
-    # Define the search space
-    hidden_dim_options = [8, 16, 32, 64, 128, 256] #, 512]
-    batch_size_options = [128, 128] # [4, 8, 16, 32, 64, 128]
-    learning_rate_options = (1e-6, 1e-1) # min and max values for loguniform distribution
-    smote_k_neighbors_options = list(range(3, 16))
-    # NOTE: We want Optuna to explore the combination (very low dropout, very
-    # small hidden_dim)
-    dropout_options = (0, 0.5)
+    hparams_ranges = None
 
     # Set the verbosity of Optuna
     optuna.logging.set_verbosity(optuna.logging.WARNING)
     # Set a quasi-random sampler, as suggested in: https://github.com/google-research/tuning_playbook?tab=readme-ov-file#faqs
-    # sampler = TPESampler(seed=42, multivariate=True)
-    sampler = QMCSampler(qmc_type='halton', scramble=True, seed=42)
+    # sampler = QMCSampler(qmc_type='halton', scramble=True, seed=42)
+    sampler = TPESampler(seed=42, multivariate=True)
     # Create an Optuna study object
     study = optuna.create_study(direction='minimize', sampler=sampler)
 
@@ -316,11 +327,7 @@ def hyperparameter_tuning_and_training(
                 kf=kf,
                 groups=groups,
                 test_df=test_df,
-                hidden_dim_options=hidden_dim_options,
-                batch_size_options=batch_size_options,
-                learning_rate_options=learning_rate_options,
-                smote_k_neighbors_options=smote_k_neighbors_options,
-                dropout_options=dropout_options,
+                hparams_ranges=hparams_ranges,
                 fast_dev_run=fast_dev_run,
                 active_label=active_label,
                 max_epochs=max_epochs,
@@ -344,11 +351,7 @@ def hyperparameter_tuning_and_training(
         kf=kf,
         groups=groups,
         test_df=test_df,
-        hidden_dim_options=hidden_dim_options,
-        batch_size_options=batch_size_options,
-        learning_rate_options=learning_rate_options,
-        smote_k_neighbors_options=smote_k_neighbors_options,
-        dropout_options=dropout_options,
+        hparams_ranges=hparams_ranges,
         fast_dev_run=fast_dev_run,
         active_label=active_label,
         max_epochs=max_epochs,
@@ -384,7 +387,7 @@ def hyperparameter_tuning_and_training(
             return_predictions=True,
             batch_size=128,
             apply_scaling=True,
-            use_batch_norm=True,
+            # use_batch_norm=True,
             **study.best_params,
         )
         # Rename the keys in the metrics dictionary
@@ -463,34 +466,6 @@ def hyperparameter_tuning_and_training(
             majority_vote_metrics['model_type'] = 'Pytorch'
             majority_vote_metrics['disabled_embeddings'] = disabled_embeddings_str
             ablation_report.append(majority_vote_metrics.copy())
-
-        # _, _, metrics = train_model(
-        #     protein2embedding=protein2embedding,
-        #     cell2embedding=cell2embedding,
-        #     smiles2fp=smiles2fp,
-        #     train_df=train_val_df,
-        #     val_df=test_df,
-        #     fast_dev_run=fast_dev_run,
-        #     active_label=active_label,
-        #     max_epochs=max_epochs,
-        #     use_logger=False,
-        #     logger_save_dir=logger_save_dir,
-        #     logger_name=f'{logger_name}_disabled-{"-".join(disabled_embeddings)}',
-        #     disabled_embeddings=disabled_embeddings,
-        #     batch_size=128,
-        #     apply_scaling=True,
-        #     **study.best_params,
-        # )
-        # # Rename the keys in the metrics dictionary
-        # metrics = {k.replace('val_', 'test_'): v for k, v in metrics.items()}
-        # metrics['disabled_embeddings'] = disabled_embeddings_str
-        # metrics['model_type'] = 'Pytorch'
-        # metrics.update(dfs_stats)
-
-        # # Add the training metrics        
-        # train_metrics = {m: v.item() for m, v in trainer.callback_metrics.items() if 'train' in m}
-        # metrics.update(train_metrics)
-        # ablation_report.append(metrics.copy())
 
     ablation_report = pd.DataFrame(ablation_report)
 

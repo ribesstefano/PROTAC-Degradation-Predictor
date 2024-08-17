@@ -24,6 +24,21 @@ import torch
 xgb.set_config(verbosity=0)
 
 
+def get_confidence_scores(y, y_pred, threshold=0.5):
+    # Calculate the likelihood for the false negative: get the mean value of
+    # the prediction for the false-positive and false-negatives
+
+    # Get the indices of the false positives and false negatives
+    false_positives = (y == 0) & ((y_pred > threshold).astype(int) == 1)
+    false_negatives = (y == 1) & ((y_pred > threshold).astype(int) == 0)
+
+    # Get the mean value of the predictions for the false positives and false negatives
+    false_positives_mean = y_pred[false_positives].mean()
+    false_negatives_mean = y_pred[false_negatives].mean()
+
+    return false_positives_mean, false_negatives_mean
+
+
 def train_and_evaluate_xgboost(
         protein2embedding: Dict,
         cell2embedding: Dict,
@@ -92,24 +107,34 @@ def train_and_evaluate_xgboost(
     # Evaluate model
     val_pred = model.predict(dval)
     val_pred_binary = (val_pred > 0.5).astype(int)
+
+    fp_mean, fn_mean = get_confidence_scores(y_val, val_pred)
+
     metrics = {
         'val_acc': accuracy_score(y_val, val_pred_binary),
         'val_roc_auc': roc_auc_score(y_val, val_pred),
         'val_precision': precision_score(y_val, val_pred_binary),
         'val_recall': recall_score(y_val, val_pred_binary),
         'val_f1_score': f1_score(y_val, val_pred_binary),
+        'val_false_positives_mean': fp_mean,
+        'val_false_negatives_mean': fn_mean,
     }
     preds = {'val_pred': val_pred}
 
     if test_df is not None:
         test_pred = model.predict(dtest)
-        test_pred_binary = (test_pred > 0.5).astype(int)        
+        test_pred_binary = (test_pred > 0.5).astype(int)
+
+        fp_mean, fn_mean = get_confidence_scores(y_test, test_pred)
+
         metrics.update({
             'test_acc': accuracy_score(y_test, test_pred_binary),
             'test_roc_auc': roc_auc_score(y_test, test_pred),
             'test_precision': precision_score(y_test, test_pred_binary),
             'test_recall': recall_score(y_test, test_pred_binary),
             'test_f1_score': f1_score(y_test, test_pred_binary),
+            'test_false_positives_mean': fp_mean,
+            'test_false_negatives_mean': fn_mean,
         })
         preds.update({'test_pred': test_pred})
     
@@ -328,7 +353,7 @@ def xgboost_hyperparameter_tuning_and_training(
 
         # Save the trained model
         if model_name:
-            model_filename = f'{model_name}_best_model_{split_type}_n{i}.json'
+            model_filename = f'{model_name}_best_model_{split_type}_n{i}-test_acc={metrics["test_acc"]:.2f}-test_roc_auc={metrics["test_roc_auc"]:.3f}.json'
             model.save_model(model_filename)
             logging.info(f'Best XGBoost model saved to: {model_filename}')
     test_report = pd.DataFrame(test_report)

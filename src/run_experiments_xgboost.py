@@ -324,7 +324,7 @@ def main(
             group = train_val_df['Uniprot Group'].to_numpy()
 
         # Start the experiment
-        experiment_name = f'{active_name}_test_split_{test_split}_{split_type}'
+        experiment_name = f'{split_type}_{active_name}_test_split_{test_split}'
         optuna_reports = pdp.xgboost_hyperparameter_tuning_and_training(
             protein2embedding=protein2embedding,
             cell2embedding=cell2embedding,

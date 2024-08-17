@@ -2,7 +2,7 @@ import setuptools
 
 setuptools.setup(
     name="protac_degradation_predictor",
-    version="0.0.1",
+    version="1.0.1",
     author="Stefano Ribes",
     url="https://github.com/ribesstefano/PROTAC-Degradation-Predictor",
     author_email="ribes.stefano@gmail.com",

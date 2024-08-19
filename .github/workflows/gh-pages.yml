@@ -25,6 +25,7 @@ jobs:
       - name: Build the documentation
         run: |
           cd docs
+          sphinx-apidoc -o source/ ../protac_degradation_predictor
           make html
 
       - name: Deploy to GitHub Pages

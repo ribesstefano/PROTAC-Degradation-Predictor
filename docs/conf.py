@@ -41,7 +41,7 @@ autodoc_default_options = {
     'show-inheritance': True,
     'inherited-members': True,
     'member-order': 'bysource',
- }
+}
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output

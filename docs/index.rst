@@ -88,13 +88,13 @@ Getting Help
 If you encounter any issues or have questions, please refer to the following resources:
 
 - **Documentation**: Full API documentation and user guide.
-- **GitHub Issues**: Report bugs or request features on the [GitHub Issues](https://github.com/ribesstefano/PROTAC-Degradation-Predictor/issues) page.
-- **Contributing**: Learn how to contribute to the project by reading our [Contribution Guidelines](https://github.com/ribesstefano/PROTAC-Degradation-Predictor/blob/main/CONTRIBUTING.md).
+- **GitHub Issues**: Report bugs or request features on the `GitHub Issues <https://github.com/ribesstefano/PROTAC-Degradation-Predictor/issues>`_ page.
+- **Contributing**: Learn how to contribute to the project by reading our `Contribution Guidelines <https://github.com/ribesstefano/PROTAC-Degradation-Predictor/blob/main/CONTRIBUTING.md>`_.
 
 License
 =======
 
-This project is licensed under the MIT License. See the [LICENSE](https://github.com/ribesstefano/PROTAC-Degradation-Predictor/blob/main/LICENSE) file for details.
+This project is licensed under the MIT License. See the `LICENSE <https://github.com/ribesstefano/PROTAC-Degradation-Predictor/blob/main/LICENSE>`_ file for details.
 
 About
 =====
@@ -103,7 +103,7 @@ About
 
 **Version**: v1.0.1
 
-Built with Sphinx using the [Read the Docs theme](https://sphinx-rtd-theme.readthedocs.io/).
+Built with Sphinx using the `Read the Docs theme <https://sphinx-rtd-theme.readthedocs.io/>`_.
 
 ----------
 

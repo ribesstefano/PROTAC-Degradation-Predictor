@@ -101,7 +101,7 @@ class PROTAC_Predictor(nn.Module):
         self.dropout = nn.Dropout(p=dropout)
 
     
-    def forward(self, poi_emb, e3_emb, cell_emb, smiles_emb):
+    def forward(self, poi_emb, e3_emb, cell_emb, smiles_emb, return_embeddings=False):
         embeddings = []
         if self.join_embeddings == 'beginning':
             # TODO: Remove this if-branch
@@ -147,8 +147,10 @@ class PROTAC_Predictor(nn.Module):
         if torch.isnan(x).any():
             raise ValueError("NaN values found in sum of softmax-ed embeddings.")
         x = F.relu(self.fc1(x))
-        x = self.bnorm(x) if self.use_batch_norm else self.self.dropout(x)
-        x = self.fc3(x)
+        h = self.bnorm(x) if self.use_batch_norm else self.self.dropout(x)
+        x = self.fc3(h)
+        if return_embeddings:
+            return x, h
         return x
 
 
@@ -277,7 +279,7 @@ class PROTAC_Model(pl.LightningModule):
             tensor /= torch.tensor(scaler.scale_, dtype=tensor.dtype, device=tensor.device) + alpha
         return tensor
 
-    def forward(self, poi_emb, e3_emb, cell_emb, smiles_emb, prescaled_embeddings=True):
+    def forward(self, poi_emb, e3_emb, cell_emb, smiles_emb, prescaled_embeddings=True, return_embeddings=False):
         if not prescaled_embeddings:
             if self.apply_scaling:
                 if self.join_embeddings == 'beginning':
@@ -302,7 +304,7 @@ class PROTAC_Model(pl.LightningModule):
             raise ValueError("NaN values found in cell embeddings.")
         if torch.isnan(smiles_emb).any():
             raise ValueError("NaN values found in SMILES embeddings.")
-        return self.model(poi_emb, e3_emb, cell_emb, smiles_emb)
+        return self.model(poi_emb, e3_emb, cell_emb, smiles_emb, return_embeddings)
 
     def step(self, batch, batch_idx, stage):
         poi_emb = batch['poi_emb']

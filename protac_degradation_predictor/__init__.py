@@ -28,6 +28,7 @@ from .optuna_utils_xgboost import (
 from .protac_degradation_predictor import (
     get_protac_active_proba,
     is_protac_active,
+    get_protac_embedding,
 )
 
 __version__ = "0.0.1"

@@ -25,7 +25,7 @@ The primary functionalities of this package include:
 Features
 ========
 
-- **Machine Learning Models**: Utilize XGBoost, PyTorch, and scikit-learn models to predict PROTAC activity (refer to the :func:`protac_degradation_predictor.get_protac_active_proba` function).
+- **Machine Learning Models**: Utilize XGBoost, PyTorch, and scikit-learn models to predict PROTAC activity (refer to the :func:`protac_degradation_predictor.protac_degradation_predictor.get_protac_active_proba` function).
 - **Dataset Handling**: Load and manage datasets specific to PROTAC research (refer to the :func:`protac_degradation_predictor.data_utils.load_curated_dataset` function).
 - **Customizability**: Tune model hyperparameters and experiment with different model configurations (refer to the :func:`protac_degradation_predictor.optuna_utils.hyperparameter_tuning_and_training` function).
 
@@ -86,6 +86,7 @@ Getting Help
 ============
 
 If you encounter any issues or have questions, please refer to the following resources:
+
 - **Documentation**: Full API documentation and user guide.
 - **GitHub Issues**: Report bugs or request features on the [GitHub Issues](https://github.com/ribesstefano/PROTAC-Degradation-Predictor/issues) page.
 - **Contributing**: Learn how to contribute to the project by reading our [Contribution Guidelines](https://github.com/ribesstefano/PROTAC-Degradation-Predictor/blob/main/CONTRIBUTING.md).

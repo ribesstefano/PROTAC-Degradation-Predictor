@@ -10,7 +10,7 @@ A machine learning-based tool for predicting PROTAC protein degradation activity
 
 - [Data Curation](#-data-curation)
 - [Installation](#-installation)
-- [Usage](#-usage)
+- [Documentation and Usage](#-documentation-and-usage)
 - [Training](#-training)
 - [Citation](#-citation)
 - [License](#-license)
@@ -33,9 +33,10 @@ pip install .
 
 The package has been developed on a Linux machine with Python 3.10.8. It is recommended to use a virtual environment to avoid conflicts with other packages.
 
-## 🎯 Usage
+## 🎯 Documentation and Usage
 
-For a thorough explanation on how to use the package, please refer to the tutorial notebook [`protac_degradation_predictor_tutorial.ipynb`](notebooks/protac_degradation_predictor_tutorial.ipynb).
+The package documentation can be found [here](https://ribesstefano.github.io/PROTAC-Degradation-Predictor/).
+For a walkthrough on how to use the package, please refer to the tutorial notebook [`protac_degradation_predictor_tutorial.ipynb`](notebooks/protac_degradation_predictor_tutorial.ipynb).
 
 After installing the package, you can use it as follows:
 

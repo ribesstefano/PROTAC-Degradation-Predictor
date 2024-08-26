@@ -334,9 +334,9 @@ class PROTAC_Model(pl.LightningModule):
     def configure_optimizers(self):
         # Define optimizer
         if self.extra_optim_params is not None:
-            optimizer = optim.Adam(self.parameters(), lr=self.learning_rate, **self.extra_optim_params)
+            optimizer = optim.AdamW(self.parameters(), lr=self.learning_rate, **self.extra_optim_params)
         else:
-            optimizer = optim.Adam(self.parameters(), lr=self.learning_rate)
+            optimizer = optim.AdamW(self.parameters(), lr=self.learning_rate)
         # Define LR scheduler
         lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             optimizer=optimizer,
@@ -420,9 +420,21 @@ class PROTAC_Model(pl.LightningModule):
                 logging.warning("Scalers not found in checkpoint. Consider re-fitting scalers if necessary.")
 
 
-def get_confidence_scores(true_ds, y_preds, threshold=0.5):
-    # Calculate the likelihood for the false negative: get the mean value of
-    # the prediction for the false-positive and false-negatives
+def get_confidence_scores(
+        true_ds: PROTAC_Dataset | torch.Tensor | np.ndarray,
+        y_preds: torch.Tensor | np.ndarray,
+        threshold: float = 0.5,
+) -> Tuple[float, float]:
+    """ Get the mean value of the predictions for the false positives and false negatives.
+    
+    Args:
+        true_ds (PROTAC_Dataset | torch.Tensor | np.ndarray): The true labels
+        y_preds (torch.Tensor | np.ndarray): The predictions
+        threshold (float): The threshold to use for the predictions
+    
+    Returns:
+        Tuple[float, float]: The mean value of the predictions for the false positives and false negatives.
+    """
 
     # Convert PyTorch dataset labels to numpy array
     if isinstance(true_ds, PROTAC_Dataset):
@@ -441,15 +453,9 @@ def get_confidence_scores(true_ds, y_preds, threshold=0.5):
     else:
         raise ValueError("Unknown type for predictions.")
 
-    logging.info(f"True values: {true_vals}")
-    logging.info(f"Predictions: {preds}")
-
     # Get the indices of the false positives and false negatives
     false_positives = (true_vals == 0) & ((preds > threshold).astype(int) == 1)
     false_negatives = (true_vals == 1) & ((preds > threshold).astype(int) == 0)
-
-    logging.info(f"False positives: {false_positives}")
-    logging.info(f"False negatives: {false_negatives}")
 
     # Get the mean value of the predictions for the false positives and false negatives
     false_positives_mean = preds[false_positives].mean()

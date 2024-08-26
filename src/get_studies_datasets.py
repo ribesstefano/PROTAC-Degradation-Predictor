@@ -289,7 +289,16 @@ def get_dataframe_stats(
     return stats
 
 
-def merge_numerical_cols(group):
+def merge_numerical_cols(group: pd.DataFrame) -> pd.DataFrame:
+    """ Merge the numerical columns by computing the geometric mean.
+    
+    Args:
+        group (pd.DataFrame): The group to merge.
+
+    Returns:
+        pd.DataFrame: The merged group (as a single row).
+
+    """
     key_cols = [
         'Smiles',
         'Uniprot',
@@ -313,7 +322,15 @@ def merge_numerical_cols(group):
     return row
 
 
-def remove_duplicates(df):
+def remove_duplicates(df: pd.DataFrame) -> pd.DataFrame:
+    """ Remove duplicates from the DataFrame.
+    
+    Args:
+        df (pd.DataFrame): The DataFrame to remove duplicates from.
+
+    Returns:
+        pd.DataFrame: The DataFrame without duplicates.
+    """
     key_cols = [
         'Smiles',
         'Uniprot',
@@ -400,12 +417,22 @@ def main(
         os.makedirs(data_dir)
 
     # Open file for reporting
-    with open(f'{data_dir}/report_datasets.md', 'w') as f:
-        # Cross-Validation Training
-        for split_type, indeces in test_indeces.items():
-            test_df = active_df.loc[indeces].copy()
-            train_val_df = active_df[~active_df.index.isin(test_df.index)].copy()
+    for split_type, indeces in test_indeces.items():
+        test_df = active_df.loc[indeces].copy()
+        train_val_df = active_df[~active_df.index.isin(test_df.index)].copy()
 
+        # Save the datasets
+        train_val_perc = f'{int((1 - test_split) * 100)}'
+        test_perc = f'{int(test_split * 100)}'
+
+        train_val_filename = f'{data_dir}/{split_type}_train_val_{train_val_perc}split_{active_name}.csv'
+        test_filename = f'{data_dir}/{split_type}_test_{test_perc}split_{active_name}.csv'
+
+        train_val_df.to_csv(train_val_filename, index=False)
+        test_df.to_csv(test_filename, index=False)
+
+        # Report statistics of the cross-validation training datasets
+        with open(f'{data_dir}/report_datasets.md', 'w') as f:
             # Print statistics on active/inactive percentages
             perc_active = train_val_df[active_col].sum() / len(train_val_df)
             print('-' * 80)
@@ -446,21 +473,33 @@ def main(
             f.write('\n\n')
             print('-' * 80)
 
+    # Regression datasets
 
+    # Load the PROTAC dataset
+    protac_df = pd.read_csv('../data/PROTAC-Degradation-DB.csv')
+    # Map E3 Ligase Iap to IAP
+    protac_df['E3 Ligase'] = protac_df['E3 Ligase'].str.replace('Iap', 'IAP')
 
-        # Save the datasets
-        train_val_perc = f'{int((1 - test_split) * 100)}'
-        test_perc = f'{int(test_split * 100)}'
+    # Calculate pDC50 on the 'DC50 (nM)' column
+    protac_df['pDC50'] = -np.log10(protac_df['DC50 (nM)'] * 1e-9)
 
-        train_val_filename = f'{data_dir}/{split_type}_train_val_{train_val_perc}split_{active_name}.csv'
-        test_filename = f'{data_dir}/{split_type}_test_{test_perc}split_{active_name}.csv'
+    # Precompute fingerprints and average Tanimoto similarity
+    _, protac_df = get_smiles2fp_and_avg_tanimoto(protac_df)
 
-        # print('')
-        # print(f'Saving train_val datasets as: {train_val_filename}')
-        # print(f'Saving test datasets as:      {test_filename}')
+    # Get the two datasets
+    dmax_df = protac_df[protac_df['Dmax (%)'].notna()].copy()
+    pdc50_df = protac_df[protac_df['pDC50'].notna()].copy()
 
-        train_val_df.to_csv(train_val_filename, index=False)
-        test_df.to_csv(test_filename, index=False)
+    ## Get the test sets
+    test_indeces = {'dmax': {}, 'pdc50': {}}
+
+    if studies == 'standard' or studies == 'all':
+        test_indeces['dmax']['standard'] = get_random_split_indices(dmax_df, test_split)
+        test_indeces['pdc50']['standard'] = get_random_split_indices(pdc50_df, test_split)
+    if studies == 'target' or studies == 'all':
+        test_indeces['dmax']['target'] = get_target_split_indices(dmax_df, active_col, test_split)
+    if studies == 'similarity' or studies == 'all':
+        test_indeces['dmax']['similarity'] = get_tanimoto_split_indices(active_df, active_col, test_split)
 
 
 if __name__ == '__main__':

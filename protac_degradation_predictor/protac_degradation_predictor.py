@@ -429,6 +429,6 @@ def get_protac_embedding(
             prescaled_embeddings=False, # Normalization performed by the model
             return_embeddings=True,
         )
-        protac_embs[ckpt_path] = protac_emb
+        protac_embs[ckpt_path] = protac_emb.detach().cpu().numpy()
     
     return protac_embs

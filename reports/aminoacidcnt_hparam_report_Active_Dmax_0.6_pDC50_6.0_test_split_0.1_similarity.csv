@@ -1,2 +1,0 @@
-hidden_dim,learning_rate,smote_k_neighbors,use_smote,dropout,use_batch_norm,split_type
-64,0.00032638170547175614,13,False,0.0669406469682807,True,similarity

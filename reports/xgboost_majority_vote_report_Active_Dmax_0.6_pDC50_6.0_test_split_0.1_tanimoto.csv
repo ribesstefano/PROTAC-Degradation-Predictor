@@ -1,2 +1,0 @@
-test_acc,test_roc_auc,test_precision,test_recall,test_f1_score,model_type,split_type
-0.7176470756530762,0.8310811519622803,0.8421052694320679,0.4324324429035187,0.5714285969734192,XGBoost,tanimoto

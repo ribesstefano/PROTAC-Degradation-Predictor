@@ -1,0 +1,2 @@
+hidden_dim,smote_k_neighbors,learning_rate,beta1,beta2,eps,split_type
+256,0,0.007745779860483976,0.5049253462110337,0.745670474434037,6.624806247496584e-07,standard

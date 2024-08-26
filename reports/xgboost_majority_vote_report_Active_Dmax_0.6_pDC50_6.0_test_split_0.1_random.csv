@@ -1,2 +1,0 @@
-test_acc,test_roc_auc,test_precision,test_recall,test_f1_score,model_type,split_type
-0.7790697813034058,0.8809783458709717,0.7234042286872864,0.8500000238418579,0.7816091775894165,XGBoost,random

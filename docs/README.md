@@ -45,6 +45,7 @@
     ```
 8. Generate the specific workflow Action file:
     - See file `.github/workflows/gh-pages.yml` in this repository.
+9. The start page is in the file `index.rst`.
 
 ## Miscellaneous
 

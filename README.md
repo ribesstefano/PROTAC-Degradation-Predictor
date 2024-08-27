@@ -26,9 +26,7 @@ The folder [data/studies](data/studies/) contains the training and test data use
 To install the package, open your terminal and run the following commands:
 
 ```bash
-git clone https://github.com/ribesstefano/PROTAC-Degradation-Predictor.git
-cd PROTAC-Degradation-Predictor
-pip install .
+pip install git+https://github.com/ribesstefano/PROTAC-Degradation-Predictor.git
 ```
 
 The package has been developed on a Linux machine with Python 3.10.8. It is recommended to use a virtual environment to avoid conflicts with other packages.

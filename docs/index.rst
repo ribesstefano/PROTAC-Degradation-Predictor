@@ -9,6 +9,8 @@ PROTAC-Degradation-Predictor: Documentation and Overview
 
 **PROTAC-Degradation-Predictor** is a Python package designed to predict the activity of PROTAC molecules using advanced machine learning techniques. The tool aims to assist researchers in evaluating the potential effectiveness of PROTACs, a novel class of drugs that target protein degradation.
 
+The package Github repository can be found `here <https://github.com/ribesstefano/PROTAC-Degradation-Predictor.git>`_.
+
 .. .. image:: https://yourimageurl.com/logo.png  # Add your project's logo or any relevant image
 ..    :align: center
 
@@ -38,10 +40,7 @@ To get started with PROTAC-Degradation-Predictor, follow these steps:
    Install the package using pip:
    
    .. code-block:: bash
-   
-      git clone https://github.com/ribesstefano/PROTAC-Degradation-Predictor.git
-      cd PROTAC-Degradation-Predictor
-      pip install .
+      pip install git+https://github.com/ribesstefano/PROTAC-Degradation-Predictor.git
 
 2. **Basic Usage**:
    Here's an example of how to predict PROTAC activity:
@@ -101,11 +100,11 @@ About
 
 **Author**: Stefano Ribes
 
-**Version**: v1.0.1
+**Version**: v1.0.2
 
 Built with Sphinx using the `Read the Docs theme <https://sphinx-rtd-theme.readthedocs.io/>`_.
 
 ----------
 
-*This documentation was last updated on August 19, 2024.*
+*This documentation was last updated on August 27, 2024.*
 

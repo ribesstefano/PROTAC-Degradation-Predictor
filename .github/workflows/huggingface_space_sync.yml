@@ -2,7 +2,6 @@ name: Sync to Hugging Face Hub
 on:
   push:
     branches: [main]
-  # to run this workflow manually from the Actions tab
   workflow_dispatch:
 
 jobs:
@@ -13,9 +12,17 @@ jobs:
         with:
           fetch-depth: 0
           lfs: true
-      - name: Pull changes from remote
-        run: git pull origin main
-      - name: Push to hub
+
+      # Add Hugging Face as a remote
+      - name: Add Hugging Face remote
+        run: git remote add hf https://ailab-bio:$HF_TOKEN@huggingface.co/spaces/ailab-bio/PROTAC-Degradation-Predictor
+
+      # Pull changes from Hugging Face before pushing
+      - name: Pull from Hugging Face
+        run: git pull hf main --allow-unrelated-histories
+
+      # Push changes to Hugging Face after resolving any conflicts
+      - name: Push to Hugging Face
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: git push https://ailab-bio:$HF_TOKEN@huggingface.co/spaces/ailab-bio/PROTAC-Degradation-Predictor main
+        run: git push hf main

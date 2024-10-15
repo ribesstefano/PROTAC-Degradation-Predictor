@@ -13,6 +13,8 @@ jobs:
         with:
           fetch-depth: 0
           lfs: true
+      - name: Pull changes from remote
+        run: git pull origin main
       - name: Push to hub
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}

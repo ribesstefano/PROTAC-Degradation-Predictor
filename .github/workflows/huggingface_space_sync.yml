@@ -17,9 +17,9 @@ jobs:
       - name: Add Hugging Face remote
         run: git remote add hf https://ailab-bio:$HF_TOKEN@huggingface.co/spaces/ailab-bio/PROTAC-Degradation-Predictor
 
-      # Pull changes from Hugging Face before pushing
-      - name: Pull from Hugging Face
-        run: git pull hf main --allow-unrelated-histories
+      # Pull changes using merge strategy
+      - name: Pull from Hugging Face with merge
+        run: git pull hf main --no-rebase
 
       # Push changes to Hugging Face after resolving any conflicts
       - name: Push to Hugging Face

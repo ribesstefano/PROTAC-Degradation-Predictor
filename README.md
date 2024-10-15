@@ -89,13 +89,17 @@ For training a model on a user-provided dataset, please refer to the guide repor
 If you use this tool in your research, please cite the following paper:
 
 ```
-@misc{ribes2024modeling,
-    title={Modeling PROTAC Degradation Activity with Machine Learning},
-    author={Stefano Ribes and Eva Nittinger and Christian Tyrchan and Rocío Mercado},
-    year={2024},
-    eprint={2406.02637},
-    archivePrefix={arXiv},
-    primaryClass={q-bio.QM}
+@article{Ribes_2024,
+   title={Modeling PROTAC degradation activity with machine learning},
+   volume={6},
+   ISSN={2667-3185},
+   url={http://dx.doi.org/10.1016/j.ailsci.2024.100104},
+   DOI={10.1016/j.ailsci.2024.100104},
+   journal={Artificial Intelligence in the Life Sciences},
+   publisher={Elsevier BV},
+   author={Ribes, Stefano and Nittinger, Eva and Tyrchan, Christian and Mercado, Rocío},
+   year={2024},
+   month=dec, pages={100104}
 }
 ```
 

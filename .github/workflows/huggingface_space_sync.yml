@@ -13,10 +13,7 @@ jobs:
         with:
           fetch-depth: 0
           lfs: true
-      
-      - name: Pull changes from remote
-        run: git pull https://ailab-bio:$HF_TOKEN@huggingface.co/spaces/ailab-bio/PROTAC-Degradation-Predictor main --no-rebase
-      
+
       - name: Push to hub
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}

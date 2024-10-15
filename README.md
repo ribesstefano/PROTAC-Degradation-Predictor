@@ -1,3 +1,15 @@
+---
+title: PROTAC-Degradation-Predictor
+emoji: 🧬
+colorFrom: pink
+colorTo: green
+sdk: gradio
+sdk_version: 4.37.2
+app_file: app.py
+pinned: false
+license: mit
+---
+
 ![Maturity level-0](https://img.shields.io/badge/Maturity%20Level-ML--0-red)
 <a href="https://colab.research.google.com/github/ribesstefano/PROTAC-Degradation-Predictor/blob/main/notebooks/protac_degradation_predictor_tutorial.ipynb" target="_parent"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a>
 [![Open in Spaces](https://huggingface.co/datasets/huggingface/badges/resolve/main/open-in-hf-spaces-sm.svg)](https://huggingface.co/spaces/ailab-bio/PROTAC-Degradation-Predictor)

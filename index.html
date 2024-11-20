@@ -1,0 +1,205 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PROTAC-Degradation-Predictor: Documentation and Overview &mdash; PROTAC-Degradation-Predictor v1.0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=d29a5c0e"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="protac_degradation_predictor" href="source/modules.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="#" class="icon icon-home">
+            PROTAC-Degradation-Predictor
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Documentation Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="source/modules.html">protac_degradation_predictor</a></li>
+<li class="toctree-l1"><a class="reference internal" href="source/protac_degradation_predictor.html">protac_degradation_predictor package</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="#">PROTAC-Degradation-Predictor</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="#" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">PROTAC-Degradation-Predictor: Documentation and Overview</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/index.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="protac-degradation-predictor-documentation-and-overview">
+<h1>PROTAC-Degradation-Predictor: Documentation and Overview<a class="headerlink" href="#protac-degradation-predictor-documentation-and-overview" title="Link to this heading"></a></h1>
+<p><strong>PROTAC-Degradation-Predictor</strong> is a Python package designed to predict the activity of PROTAC molecules using advanced machine learning techniques. The tool aims to assist researchers in evaluating the potential effectiveness of PROTACs, a novel class of drugs that target protein degradation.</p>
+<p>The package Github repository can be found <a class="reference external" href="https://github.com/ribesstefano/PROTAC-Degradation-Predictor.git">here</a>.</p>
+<section id="introduction">
+<h2>Introduction<a class="headerlink" href="#introduction" title="Link to this heading"></a></h2>
+<p>PROTACs (Proteolysis Targeting Chimeras) are a class of molecules that induce the degradation of specific proteins. This package allows researchers to predict the activity of PROTACs by leveraging a variety of machine learning models, including XGBoost and PyTorch-based pretrained neural networks.</p>
+<p>The primary functionalities of this package include:
+- Predicting PROTAC activity using different machine learning models.
+- Accessing curated datasets for training and evaluation.
+- Hyperparameter tuning and model training using Optuna.</p>
+</section>
+<section id="features">
+<h2>Features<a class="headerlink" href="#features" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><strong>Machine Learning Models</strong>: Utilize XGBoost, PyTorch, and scikit-learn models to predict PROTAC activity (refer to the <a class="reference internal" href="source/protac_degradation_predictor.html#protac_degradation_predictor.protac_degradation_predictor.get_protac_active_proba" title="protac_degradation_predictor.protac_degradation_predictor.get_protac_active_proba"><code class="xref py py-func docutils literal notranslate"><span class="pre">protac_degradation_predictor.protac_degradation_predictor.get_protac_active_proba()</span></code></a> function).</p></li>
+<li><p><strong>Dataset Handling</strong>: Load and manage datasets specific to PROTAC research (refer to the <a class="reference internal" href="source/protac_degradation_predictor.html#protac_degradation_predictor.data_utils.load_curated_dataset" title="protac_degradation_predictor.data_utils.load_curated_dataset"><code class="xref py py-func docutils literal notranslate"><span class="pre">protac_degradation_predictor.data_utils.load_curated_dataset()</span></code></a> function).</p></li>
+<li><p><strong>Customizability</strong>: Tune model hyperparameters and experiment with different model configurations (refer to the <a class="reference internal" href="source/protac_degradation_predictor.html#protac_degradation_predictor.optuna_utils.hyperparameter_tuning_and_training" title="protac_degradation_predictor.optuna_utils.hyperparameter_tuning_and_training"><code class="xref py py-func docutils literal notranslate"><span class="pre">protac_degradation_predictor.optuna_utils.hyperparameter_tuning_and_training()</span></code></a> function).</p></li>
+</ul>
+</section>
+<section id="quickstart">
+<h2>Quickstart<a class="headerlink" href="#quickstart" title="Link to this heading"></a></h2>
+<p>To get started with PROTAC-Degradation-Predictor, follow these steps:</p>
+<ol class="arabic">
+<li><p><strong>Installation</strong>:
+Install the package using pip:</p></li>
+<li><p><strong>Basic Usage</strong>:
+Here’s an example of how to predict PROTAC activity:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">protac_degradation_predictor</span> <span class="kn">import</span> <span class="n">get_protac_active_proba</span>
+
+<span class="n">smiles</span> <span class="o">=</span> <span class="s2">&quot;CC(C)C1=CC=C(C=C1)C2=NC3=CC=CC=C3C(=O)N2&quot;</span>
+<span class="n">e3_ligase</span> <span class="o">=</span> <span class="s2">&quot;Q9Y6K9&quot;</span>
+<span class="n">target_uniprot</span> <span class="o">=</span> <span class="s2">&quot;P04637&quot;</span>
+<span class="n">cell_line</span> <span class="o">=</span> <span class="s2">&quot;HCT116&quot;</span>
+
+<span class="n">prediction</span> <span class="o">=</span> <span class="n">get_protac_active_proba</span><span class="p">(</span>
+    <span class="n">protac_smiles</span><span class="o">=</span><span class="n">smiles</span><span class="p">,</span>
+    <span class="n">e3_ligase</span><span class="o">=</span><span class="n">e3_ligase</span><span class="p">,</span>
+    <span class="n">target_uniprot</span><span class="o">=</span><span class="n">target_uniprot</span><span class="p">,</span>
+    <span class="n">cell_line</span><span class="o">=</span><span class="n">cell_line</span><span class="p">,</span>
+    <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cpu&#39;</span><span class="p">,</span>
+    <span class="n">use_models_from_cv</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="n">use_xgboost_models</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">study_type</span><span class="o">=</span><span class="s1">&#39;standard&#39;</span>
+<span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">prediction</span><span class="p">)</span>
+</pre></div>
+</div>
+</li>
+</ol>
+<p>For more detailed usage and customization, refer to the relevant sections below.</p>
+</section>
+<section id="contents">
+<h2>Contents<a class="headerlink" href="#contents" title="Link to this heading"></a></h2>
+<div class="toctree-wrapper compound">
+<p class="caption" role="heading"><span class="caption-text">Documentation Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="source/modules.html">protac_degradation_predictor</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="source/protac_degradation_predictor.html">protac_degradation_predictor package</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="source/protac_degradation_predictor.html">protac_degradation_predictor package</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="source/protac_degradation_predictor.html#subpackages">Subpackages</a></li>
+<li class="toctree-l2"><a class="reference internal" href="source/protac_degradation_predictor.html#submodules">Submodules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="source/protac_degradation_predictor.html#module-protac_degradation_predictor.config">protac_degradation_predictor.config module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="source/protac_degradation_predictor.html#module-protac_degradation_predictor.data_utils">protac_degradation_predictor.data_utils module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="source/protac_degradation_predictor.html#module-protac_degradation_predictor.optuna_utils">protac_degradation_predictor.optuna_utils module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="source/protac_degradation_predictor.html#module-protac_degradation_predictor.optuna_utils_xgboost">protac_degradation_predictor.optuna_utils_xgboost module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="source/protac_degradation_predictor.html#module-protac_degradation_predictor.protac_dataset">protac_degradation_predictor.protac_dataset module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="source/protac_degradation_predictor.html#module-protac_degradation_predictor.protac_degradation_predictor">protac_degradation_predictor.protac_degradation_predictor module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="source/protac_degradation_predictor.html#module-protac_degradation_predictor.pytorch_models">protac_degradation_predictor.pytorch_models module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="source/protac_degradation_predictor.html#module-protac_degradation_predictor.sklearn_models">protac_degradation_predictor.sklearn_models module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="source/protac_degradation_predictor.html#module-protac_degradation_predictor">Module contents</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</section>
+<section id="getting-help">
+<h2>Getting Help<a class="headerlink" href="#getting-help" title="Link to this heading"></a></h2>
+<p>If you encounter any issues or have questions, please refer to the following resources:</p>
+<ul class="simple">
+<li><p><strong>Documentation</strong>: Full API documentation and user guide.</p></li>
+<li><p><strong>GitHub Issues</strong>: Report bugs or request features on the <a class="reference external" href="https://github.com/ribesstefano/PROTAC-Degradation-Predictor/issues">GitHub Issues</a> page.</p></li>
+<li><p><strong>Contributing</strong>: Learn how to contribute to the project by reading our <a class="reference external" href="https://github.com/ribesstefano/PROTAC-Degradation-Predictor/blob/main/CONTRIBUTING.md">Contribution Guidelines</a>.</p></li>
+</ul>
+</section>
+<section id="license">
+<h2>License<a class="headerlink" href="#license" title="Link to this heading"></a></h2>
+<p>This project is licensed under the MIT License. See the <a class="reference external" href="https://github.com/ribesstefano/PROTAC-Degradation-Predictor/blob/main/LICENSE">LICENSE</a> file for details.</p>
+</section>
+<section id="about">
+<h2>About<a class="headerlink" href="#about" title="Link to this heading"></a></h2>
+<p><strong>Author</strong>: Stefano Ribes</p>
+<p><strong>Version</strong>: v1.0.2</p>
+<p>Built with Sphinx using the <a class="reference external" href="https://sphinx-rtd-theme.readthedocs.io/">Read the Docs theme</a>.</p>
+<hr class="docutils" />
+<p><em>This documentation was last updated on August 27, 2024.</em></p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="source/modules.html" class="btn btn-neutral float-right" title="protac_degradation_predictor" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Stefano Ribes.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

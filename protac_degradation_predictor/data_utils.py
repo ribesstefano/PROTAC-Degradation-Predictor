@@ -12,16 +12,12 @@ import numpy as np
 import pandas as pd
 from rdkit import Chem
 from rdkit.Chem import AllChem
-from joblib import Memory
-
-from bs4 import BeautifulSoup
 
 from protac_degradation_predictor.config import config
 
 
 home_dir = os.path.expanduser('~')
 cachedir = os.path.join(home_dir, '.cache', 'protac_degradation_predictor')
-memory = Memory(cachedir, verbose=0)
 
 
 def download_file(url: str, dest: Path, hash: Optional[str] = None):
@@ -32,22 +28,6 @@ def download_file(url: str, dest: Path, hash: Optional[str] = None):
     """
     if not dest.exists():
         gdown.download(url, output=str(dest), quiet=False)
-
-        # logging.debug(f"Downloading {url} to {dest}")
-        # response = requests.get(url, stream=True)
-        # response.raise_for_status()
-        # expected_size = int(response.headers.get("Content-Length", -1))
-        
-        # with open(dest, "wb") as f:
-        #     for chunk in response.iter_content(chunk_size=1024 * 1024):
-        #         if chunk:
-        #             f.write(chunk)
-
-        # if expected_size != -1:
-        #     actual = dest.stat().st_size
-        #     if actual != expected_size:
-        #         raise RuntimeError(f"Download incomplete: got {actual}, expected {expected_size}")
-
         logging.debug(f"Downloaded {url} to {dest}")
 
     if hash is not None:
@@ -58,6 +38,7 @@ def download_file(url: str, dest: Path, hash: Optional[str] = None):
                 sha256_hash.update(byte_block)
         if sha256_hash.hexdigest() != hash:
             raise ValueError(f"File {dest} does not match the expected hash {hash}.")
+
 
 @functools.lru_cache()
 def load_protein2embedding(

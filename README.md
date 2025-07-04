@@ -1,7 +1,3 @@
-===
-# The repository is going through a refactoring phase, so the API might not be stable in the next few days.
-===
-
 ![Maturity level-0](https://img.shields.io/badge/Maturity%20Level-ML--0-red)
 <!-- <a href="https://colab.research.google.com/github/ribesstefano/PROTAC-Degradation-Predictor/blob/main/notebooks/protac_degradation_predictor_tutorial.ipynb" target="_parent"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> -->
 [![Open in Spaces](https://huggingface.co/datasets/huggingface/badges/resolve/main/open-in-hf-spaces-sm.svg)](https://huggingface.co/spaces/ailab-bio/PROTAC-Degradation-Predictor)
@@ -12,36 +8,31 @@ A machine learning-based tool for predicting PROTAC protein degradation activity
 
 ## 📚 Table of Contents
 
-- [Data Curation](#-data-curation)
 - [Installation](#-installation)
 - [Documentation and Usage](#-documentation-and-usage)
+- [Data Curation](#-data-curation)
 - [Training](#-training)
 - [Citation](#-citation)
 - [License](#-license)
 
-## 📝 Data Curation
-
-The code for data curation can be found in the Jupyter notebook [`data_curation.ipynb`](notebooks/data_curation.ipynb).
-
-The folder [data/studies](data/studies/) contains the training and test data used in each study reported in our paper. The label column that is used for predictions is named _"Active (Dmax 0.6, pDC50 6.0)"_ and contains binary values.
-
 ## 🚀 Installation
 
-To install the package, open your terminal and run the following commands:
+The package has been developed and tested on a Linux machine with Python 3.12.4. It is recommended to use a virtual environment to avoid conflicts with other packages.
+
+To install the package, open your terminal and please run the following commands:
 
 ```bash
+python -m venv venv
+source venv/bin/activate  # On Windows use `venv\Scripts\activate`
+pip install --upgrade pip
 git clone --branch=main --depth=1 https://github.com/ribesstefano/PROTAC-Degradation-Predictor.git
 cd PROTAC-Degradation-Predictor
 pip install .
 ```
-<!-- pip install git+https://github.com/ribesstefano/PROTAC-Degradation-Predictor.git -->
-
-The package has been developed on a Linux machine with Python 3.10.8. It is recommended to use a virtual environment to avoid conflicts with other packages.
 
 ## 🎯 Documentation and Usage
 
 The package documentation can be found [here](https://ribesstefano.github.io/PROTAC-Degradation-Predictor/).
-For a walkthrough on how to use the package, please refer to the tutorial notebook [`protac_degradation_predictor_tutorial.ipynb`](notebooks/protac_degradation_predictor_tutorial.ipynb).
 
 After installing the package, you can use it as follows:
 
@@ -67,6 +58,10 @@ This example demonstrates how to predict the activity of a PROTAC molecule. The 
 
 The function supports batch computation by passing lists of SMILES strings, E3 ligases, UniProt IDs, and cell lines. In this case, it returns a list of booleans indicating the activity of each PROTAC.
 
+## 📝 Data Curation
+
+The code for data curation can be found in the Jupyter notebook [`data_curation.ipynb`](notebooks/data_curation.ipynb).
+
 ## 📈 Training
 
 Before running the experiments reported in our work or train on your custom dataset, here are some required steps to follow (assuming one is in the repository directory already):
@@ -80,16 +75,19 @@ cp protac_degradation_predictor/data/uniprot2embedding.h5 data/
 ```
 3. Create a virtual environment and install the required packages by running the following commands:
 ```bash
-conda env create -f environment.yaml
-conda activate protac-degradation-predictor
+python -m venv venv
+source venv/bin/activate  # On Windows use `venv\Scripts\activate`
+pip install --upgrade pip
+pip install -r requirements.txt
+pip install -r scripts/requirements.txt
 ```
-4. The code for training the PyTorch models can be found in the file [`run_experiments_pytorch.py`](src/run_experiments_pytorch.py).
+4. The code for training the PyTorch models can be found in the file [`run_experiments_pytorch.py`](scripts/run_experiments_pytorch.py).
 
 (Don't forget to adjust the `PYTHONPATH` environment variable to include the repository directory: `export PYTHONPATH=$PYTHONPATH:/path/to/PROTAC-Degradation-Predictor`)
 
 ### Training on Custom Dataset
 
-For training a model on a user-provided dataset, please refer to the guide reported in [this README](src/README.md).
+For training a model on a user-provided dataset, please refer to the guide reported in [this README](scripts/README.md).
 
 ## 📄 Citation
 
@@ -111,8 +109,6 @@ If you use this tool in your research, please cite the following paper:
 ```
 
 The directories [logs](logs/) and [reports](reports/) contain the logs and reports generated during the experiments reported in the paper. Additionally, in [reports](reports/), one can find the pickled Optuna studies for the reported experiments.
-
-The directory [models](models/) contains the trained models for the experiments reported in the paper.
 
 ## 📜 License
 

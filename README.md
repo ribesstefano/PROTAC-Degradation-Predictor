@@ -1,14 +1,6 @@
----
-title: PROTAC-Degradation-Predictor
-emoji: 🧬
-colorFrom: pink
-colorTo: green
-sdk: gradio
-sdk_version: 4.37.2
-app_file: app.py
-pinned: false
-license: mit
----
+===
+# The repository is going through a refactoring phase, so the API might not be stable in the next few days.
+===
 
 ![Maturity level-0](https://img.shields.io/badge/Maturity%20Level-ML--0-red)
 <!-- <a href="https://colab.research.google.com/github/ribesstefano/PROTAC-Degradation-Predictor/blob/main/notebooks/protac_degradation_predictor_tutorial.ipynb" target="_parent"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> -->

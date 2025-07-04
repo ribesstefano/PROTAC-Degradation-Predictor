@@ -1,16 +1,8 @@
 import os
-import pkg_resources
 import logging
-from typing import List, Literal, Dict
-
-from .pytorch_models import PROTAC_Model, load_model
-from .data_utils import (
-    load_protein2embedding,
-    load_cell2embedding,
-    get_fingerprint,
-    load_curated_dataset,
-)
-from .config import config
+from typing import List, Literal, Dict, Union
+from pathlib import Path
+import zipfile
 
 import numpy as np
 import torch
@@ -19,6 +11,57 @@ import xgboost as xgb
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.feature_extraction.text import CountVectorizer
 
+from protac_degradation_predictor.data_utils import (
+    load_protein2embedding,
+    load_cell2embedding,
+    get_fingerprint,
+    load_curated_dataset,
+    download_file,
+    cachedir,
+)
+from protac_degradation_predictor.pytorch_models import load_model
+from protac_degradation_predictor.config import config
+
+
+def load_models(
+    use_models_from_cv: bool = False,
+    use_xgboost_models: bool = True,
+    study_type: Literal['standard', 'similarity', 'target'] = 'standard',
+):
+    model_dir = Path(cachedir) / 'models'
+    if not model_dir.exists():
+        download_file(
+            url=config.models_url,
+            dest=Path(cachedir) / 'models.zip',
+        )
+
+        # Unzip the models directory from the zip file
+        with zipfile.ZipFile(Path(cachedir) / 'models.zip', 'r') as zip_ref:
+            zip_ref.extractall(model_dir)
+        
+        # Remove the zip file after extraction
+        os.remove(Path(cachedir) / 'models.zip')
+        
+    # List all models in the model_dir directory
+    model_filenames = [f for f in os.listdir(model_dir) if os.path.isfile(os.path.join(model_dir, f))]
+    
+    models = {}
+    model_to_load = 'best_model' if not use_models_from_cv else 'cv_model'
+    for model_filename in model_filenames:
+        if model_to_load not in model_filename:
+            continue
+        if study_type not in model_filename:
+            continue
+        if not use_xgboost_models:
+            if 'xgboost' not in model_filename:
+                ckpt_path = model_dir / model_filename
+                models[ckpt_path] = load_model(ckpt_path)
+        else:
+            if 'xgboost' in model_filename:
+                json_path = model_dir / model_filename
+                models[json_path] = xgb.Booster()
+                models[json_path].load_model(json_path)
+    return models
 
 def get_protac_active_proba(
         protac_smiles: str | List[str],
@@ -62,21 +105,28 @@ def get_protac_active_proba(
     # Load all required models in pkg_resources
     device = torch.device(device)
     models = {}
-    model_to_load = 'best_model' if not use_models_from_cv else 'cv_model'
-    for model_filename in pkg_resources.resource_listdir(__name__, 'models'):
-        if model_to_load not in model_filename:
-            continue
-        if study_type not in model_filename:
-            continue
-        if not use_xgboost_models:
-            if 'xgboost' not in model_filename:
-                ckpt_path = pkg_resources.resource_filename(__name__, f'models/{model_filename}')
-                models[ckpt_path] = load_model(ckpt_path).to(device)
-        else:
-            if 'xgboost' in model_filename:
-                json_path = pkg_resources.resource_filename(__name__, f'models/{model_filename}')
-                models[json_path] = xgb.Booster()
-                models[json_path].load_model(json_path)
+    
+    models = load_models(
+        use_models_from_cv=use_models_from_cv,
+        study_type=study_type,
+        use_xgboost_models=use_xgboost_models,
+    )
+
+    # model_to_load = 'best_model' if not use_models_from_cv else 'cv_model'
+    # for model_filename in pkg_resources.resource_listdir(__name__, 'models'):
+    #     if model_to_load not in model_filename:
+    #         continue
+    #     if study_type not in model_filename:
+    #         continue
+    #     if not use_xgboost_models:
+    #         if 'xgboost' not in model_filename:
+    #             ckpt_path = pkg_resources.resource_filename(__name__, f'models/{model_filename}')
+    #             models[ckpt_path] = load_model(ckpt_path).to(device)
+    #     else:
+    #         if 'xgboost' in model_filename:
+    #             json_path = pkg_resources.resource_filename(__name__, f'models/{model_filename}')
+    #             models[json_path] = xgb.Booster()
+    #             models[json_path].load_model(json_path)
 
     protein2embedding = load_protein2embedding()
     cell2embedding = load_cell2embedding()
@@ -90,7 +140,7 @@ def get_protac_active_proba(
 
     # Check if any model name contains cellsonehot, if so, get onehot encoding
     cell2onehot = None
-    if any('cellsonehot' in model_name for model_name in models.keys()):
+    if any('cellsonehot' in str(model_name) for model_name in models.keys()):
         onehotenc = OneHotEncoder(sparse_output=False)
         cell_embeddings = onehotenc.fit_transform(
             np.array(list(cell2embedding.keys())).reshape(-1, 1)
@@ -99,7 +149,7 @@ def get_protac_active_proba(
     
     # Check if any of the model names contain aminoacidcnt, if so, get the CountVectorizer
     protein2aacnt = None
-    if any('aminoacidcnt' in model_name for model_name in models.keys()):
+    if any('aminoacidcnt' in str(model_name) for model_name in models.keys()):
         # Create a new protein2embedding dictionary with amino acid sequence
         protac_df = load_curated_dataset()
         # Create the dictionary mapping 'Uniprot' to 'POI Sequence'
@@ -206,6 +256,9 @@ def get_protac_active_proba(
     # NOTE: The predictions array has shape: (n_models, batch_size)
     preds = np.array(list(preds.values()))
     mean_preds = np.mean(preds, axis=0)
+    
+    logging.debug(f"Predictions: {preds}, Mean predictions: {mean_preds}")
+    
     # Return a single value if not list as input
     mean_preds = mean_preds if isinstance(protac_smiles, list) else mean_preds[0]
     
@@ -301,15 +354,22 @@ def get_protac_embedding(
     # Load all required models in pkg_resources
     device = torch.device(device)
     models = {}
-    model_to_load = 'best_model' if not use_models_from_cv else 'cv_model'
-    for model_filename in pkg_resources.resource_listdir(__name__, 'models'):
-        if model_to_load not in model_filename:
-            continue
-        if study_type not in model_filename:
-            continue
-        if 'xgboost' not in model_filename:
-            ckpt_path = pkg_resources.resource_filename(__name__, f'models/{model_filename}')
-            models[ckpt_path] = load_model(ckpt_path).to(device)
+    
+    models = load_models(
+        use_models_from_cv=use_models_from_cv,
+        study_type=study_type,
+        use_xgboost_models=False,  # XGBoost models do not return embeddings
+    )
+
+    # model_to_load = 'best_model' if not use_models_from_cv else 'cv_model'
+    # for model_filename in pkg_resources.resource_listdir(__name__, 'models'):
+    #     if model_to_load not in model_filename:
+    #         continue
+    #     if study_type not in model_filename:
+    #         continue
+    #     if 'xgboost' not in model_filename:
+    #         ckpt_path = pkg_resources.resource_filename(__name__, f'models/{model_filename}')
+    #         models[ckpt_path] = load_model(ckpt_path).to(device)
 
     protein2embedding = load_protein2embedding()
     cell2embedding = load_cell2embedding()
@@ -323,7 +383,7 @@ def get_protac_embedding(
 
     # Check if any model name contains cellsonehot, if so, get onehot encoding
     cell2onehot = None
-    if any('cellsonehot' in model_name for model_name in models.keys()):
+    if any('cellsonehot' in str(model_name) for model_name in models.keys()):
         onehotenc = OneHotEncoder(sparse_output=False)
         cell_embeddings = onehotenc.fit_transform(
             np.array(list(cell2embedding.keys())).reshape(-1, 1)
@@ -332,7 +392,7 @@ def get_protac_embedding(
     
     # Check if any of the model names contain aminoacidcnt, if so, get the CountVectorizer
     protein2aacnt = None
-    if any('aminoacidcnt' in model_name for model_name in models.keys()):
+    if any('aminoacidcnt' in str(model_name) for model_name in models.keys()):
         # Create a new protein2embedding dictionary with amino acid sequence
         protac_df = load_curated_dataset()
         # Create the dictionary mapping 'Uniprot' to 'POI Sequence'

@@ -1,10 +1,12 @@
 import os
-import pkg_resources
 import pickle
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Literal
+from pathlib import Path
+import requests
+import logging
+import functools
 
-from .config import config
-
+import gdown
 import h5py
 import numpy as np
 import pandas as pd
@@ -12,13 +14,52 @@ from rdkit import Chem
 from rdkit.Chem import AllChem
 from joblib import Memory
 
+from bs4 import BeautifulSoup
+
+from protac_degradation_predictor.config import config
+
 
 home_dir = os.path.expanduser('~')
 cachedir = os.path.join(home_dir, '.cache', 'protac_degradation_predictor')
 memory = Memory(cachedir, verbose=0)
 
 
-@memory.cache
+def download_file(url: str, dest: Path, hash: Optional[str] = None):
+    """ Download a file from a URL to a destination path.
+    Args:
+        url (str): The URL to download the file from.
+        dest (Path): The destination path where the file will be saved.
+    """
+    if not dest.exists():
+        gdown.download(url, output=str(dest), quiet=False)
+
+        # logging.debug(f"Downloading {url} to {dest}")
+        # response = requests.get(url, stream=True)
+        # response.raise_for_status()
+        # expected_size = int(response.headers.get("Content-Length", -1))
+        
+        # with open(dest, "wb") as f:
+        #     for chunk in response.iter_content(chunk_size=1024 * 1024):
+        #         if chunk:
+        #             f.write(chunk)
+
+        # if expected_size != -1:
+        #     actual = dest.stat().st_size
+        #     if actual != expected_size:
+        #         raise RuntimeError(f"Download incomplete: got {actual}, expected {expected_size}")
+
+        logging.debug(f"Downloaded {url} to {dest}")
+
+    if hash is not None:
+        import hashlib
+        sha256_hash = hashlib.sha256()
+        with open(dest, "rb") as f:
+            for byte_block in iter(lambda: f.read(4096), b""):
+                sha256_hash.update(byte_block)
+        if sha256_hash.hexdigest() != hash:
+            raise ValueError(f"File {dest} does not match the expected hash {hash}.")
+
+@functools.lru_cache()
 def load_protein2embedding(
     embeddings_path: Optional[str] = None,
 ) -> Dict[str, np.ndarray]:
@@ -31,7 +72,13 @@ def load_protein2embedding(
         Dict[str, np.ndarray]: A dictionary of protein embeddings.
     """
     if embeddings_path is None:
-        embeddings_path = pkg_resources.resource_stream(__name__, 'data/uniprot2embedding.h5')
+        embeddings_path = Path(cachedir) / 'uniprot2embedding.h5'
+        if not embeddings_path.exists():
+            os.makedirs(embeddings_path.parent, exist_ok=True)
+            download_file(
+                url=config.uniprot2embedding_url,
+                dest=embeddings_path,
+            )
     protein2embedding = {}
     with h5py.File(embeddings_path, "r") as file:
         for sequence_id in file.keys():
@@ -40,7 +87,7 @@ def load_protein2embedding(
     return protein2embedding
 
 
-@memory.cache
+@functools.lru_cache()
 def load_cell2embedding(
         embeddings_path: Optional[str] = None,
 ) -> Dict[str, np.ndarray]:
@@ -53,12 +100,34 @@ def load_cell2embedding(
         Dict[str, np.ndarray]: A dictionary of cell line embeddings.
     """
     if embeddings_path is None:
-        with pkg_resources.resource_stream(__name__, 'data/cell2embedding.pkl') as f:
-            cell2embedding = pickle.load(f)
-    else:
-        with open(embeddings_path, 'rb') as f:
-            cell2embedding = pickle.load(f)
+        embeddings_path = Path(cachedir) / 'cell2embedding.pkl'
+        if not embeddings_path.exists():
+            os.makedirs(embeddings_path.parent, exist_ok=True)
+            download_file(
+                url=config.cell2embedding_url,
+                dest=embeddings_path,
+            )
+    with open(embeddings_path, 'rb') as f:
+        cell2embedding = pickle.load(f)
     return cell2embedding
+
+
+@functools.lru_cache()
+def load_curated_dataset() -> pd.DataFrame:
+    """ Load the curated PROTAC dataset as described in the paper: https://arxiv.org/abs/2406.02637
+
+    Returns:
+        pd.DataFrame: The curated PROTAC dataset.
+    """
+    
+    df_path = Path(cachedir) / 'PROTAC-Degradation-DB.csv'
+    if not df_path.exists():
+        os.makedirs(df_path.parent, exist_ok=True)
+        download_file(
+            url=config.curated_dataset_url,
+            dest=df_path,
+        )
+    return pd.read_csv(df_path)
 
 
 def avail_e3_ligases() -> List[str]:
@@ -141,14 +210,3 @@ def is_active(
             return True if pDC50 >= pDC50_threshold and Dmax >= Dmax_threshold else False
         else:
             return np.nan
-
-
-def load_curated_dataset() -> pd.DataFrame:
-    """ Load the curated PROTAC dataset as described in the paper: https://arxiv.org/abs/2406.02637
-
-    Returns:
-        pd.DataFrame: The curated PROTAC dataset.
-    """
-    with pkg_resources.resource_stream(__name__, 'data/PROTAC-Degradation-DB.csv') as f:
-        protac_df = pd.read_csv(f)
-    return protac_df

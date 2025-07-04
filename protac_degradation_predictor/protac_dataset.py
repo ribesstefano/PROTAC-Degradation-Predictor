@@ -3,13 +3,6 @@ from collections import defaultdict
 import random
 import logging
 
-from .data_utils import (
-    get_fingerprint,
-    is_active,
-    load_cell2embedding,
-    load_protein2embedding,
-)
-
 from torch.utils.data import Dataset, DataLoader
 from imblearn.over_sampling import SMOTE, ADASYN
 from sklearn.preprocessing import StandardScaler, OrdinalEncoder
@@ -19,6 +12,13 @@ import pytorch_lightning as pl
 from rdkit import Chem
 from rdkit.Chem import AllChem
 from rdkit import DataStructs
+
+from protac_degradation_predictor.data_utils import (
+    get_fingerprint,
+    is_active,
+    load_cell2embedding,
+    load_protein2embedding,
+)
 
 
 class PROTAC_Dataset(Dataset):

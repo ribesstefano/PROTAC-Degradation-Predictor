@@ -3,9 +3,6 @@ import pickle
 import logging
 from typing import Literal, List, Tuple, Optional, Dict
 
-from .protac_dataset import PROTAC_Dataset, get_datasets
-from .config import config
-
 import pandas as pd
 import numpy as np
 import torch
@@ -13,7 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import pytorch_lightning as pl
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 from torchmetrics import (
     Accuracy,
     AUROC,
@@ -24,6 +21,9 @@ from torchmetrics import (
 )
 from imblearn.over_sampling import SMOTE
 from sklearn.preprocessing import StandardScaler
+
+from protac_degradation_predictor.protac_dataset import PROTAC_Dataset, get_datasets
+from protac_degradation_predictor.config import config
 
 
 class PROTAC_Predictor(nn.Module):

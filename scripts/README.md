@@ -5,7 +5,8 @@
 From the repository top level directory, run the following command to get the datasets reported in the paper:
 
 ```bash
-cd src
+cd scripts
+pip install -r requirements.txt
 python get_studies_datasets.py
 ```
 
@@ -23,7 +24,7 @@ The column `<active_label>` is set _"Active"_ as default in the `PROTAC_Dataset`
 
 ## Training on Custom Data
 
-For training on custom datasets, please refer to the function `hyperparameter_tuning_and_training` in [`optuna_utils.py`](../protac_degradation_predictor/optuna_utils.py) and the file [`run_experiments.py`](../src/run_experiments.py) for inspiration on how to use the function.
+For training on custom datasets, please refer to the function `hyperparameter_tuning_and_training` in [`optuna_utils.py`](../protac_degradation_predictor/optuna_utils.py) and the file [`run_experiments.py`](../scripts/run_experiments.py) for inspiration on how to use the function.
 
 An example of skeleton implementation is as follows:
 
@@ -48,8 +49,8 @@ unique_smiles = pd.concat([train_val_df, test_df])['Smiles'].unique().tolist()
 smiles2fp = {s: np.array(pdp.get_fingerprint(s)) for s in unique_smiles}
 
 # Load embedding dictionaries
-protein2embedding = pdp.load_protein2embedding('../data/uniprot2embedding.h5')
-cell2embedding = pdp.load_cell2embedding('../data/cell2embedding.pkl')
+protein2embedding = pdp.load_protein2embedding()
+cell2embedding = pdp.load_cell2embedding()
 
 # Setup Cross-Validation object
 kf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)

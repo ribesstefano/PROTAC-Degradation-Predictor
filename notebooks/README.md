@@ -1,5 +1,15 @@
 # Notebooks
 
+## Installation
+
+To run the notebooks in this directory, you need to have additional packages installed via:
+
+```bash
+pip install -r notebooks/requirements.txt
+```
+
+## List of Notebooks
+
 The following is a short description of the Jupyter notebooks that are available in this repository:
 
 - [Data curation](data_curation.ipynb)

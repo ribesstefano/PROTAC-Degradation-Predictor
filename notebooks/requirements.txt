@@ -6,7 +6,7 @@ ipython==8.12.3
 jsonargparse==4.40.0
 lxml==6.0.0
 matplotlib==3.10.3
-numpy==2.3.1
+numpy==1.26.4
 optuna==4.4.0
 pandas==2.3.0
 pytorch_lightning==2.5.2

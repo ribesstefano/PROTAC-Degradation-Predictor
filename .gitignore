@@ -162,11 +162,8 @@ cython_debug/
 
 # Custom files
 
-data/uniprot2embedding.h5
-data/PROTAC-DB.csv
-data/PROTAC-Pedia.csv
-data/cellosaurus.txt
+data/
 logs/
-notebooks/per-protein*
 *slurm*.out
+notebooks/per-protein*
 .DS_Store

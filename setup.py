@@ -10,7 +10,7 @@ setuptools.setup(
     version="2.0.0",
     author="Stefano Ribes",
     url="https://github.com/ribesstefano/PROTAC-Degradation-Predictor",
-    author_email="ribes.stefano@gmail.com",
+    author_email="ribes@chalmers.se",
     description="A package to predict PROTAC-induced protein degradation.",
     long_description=open("README.md").read(),
     packages=setuptools.find_packages(),
@@ -20,6 +20,4 @@ setuptools.setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    # include_package_data=True,
-    # package_data={"": ["data/*.h5", "data/*.pkl", "data/*.csv", "models/*.ckpt"]},
 )

@@ -16,8 +16,28 @@ from rdkit.Chem import AllChem
 from protac_degradation_predictor.config import config
 
 
-home_dir = os.path.expanduser('~')
-cachedir = os.path.join(home_dir, '.cache', 'protac_degradation_predictor')
+def get_cache_dir() -> str:
+    """Get the cache directory path and ensure it exists.
+    
+    Returns:
+        str: Path to the cache directory
+    """
+    cache_dir = os.environ.get(
+        "PROTAC_DEGRADATION_PREDICTOR_CACHE",
+        os.path.join(os.path.expanduser('~'), '.cache', 'protac_degradation_predictor')
+    )
+    try:
+        os.makedirs(cache_dir, exist_ok=True)
+    except PermissionError as e:
+        # Fallback to a temporary directory
+        import tempfile
+        cache_dir = os.path.join(tempfile.gettempdir(), 'protac_degradation_predictor')
+        os.makedirs(cache_dir, exist_ok=True)
+        logging.warning(f"Permission denied creating cache directory. Using temporary directory: {cache_dir}")
+    except Exception as e:
+        logging.error(f"Failed to create cache directory {cache_dir}: {e}")
+        raise
+    return cache_dir
 
 
 def download_file(url: str, dest: Path, hash: Optional[str] = None):
@@ -26,6 +46,10 @@ def download_file(url: str, dest: Path, hash: Optional[str] = None):
         url (str): The URL to download the file from.
         dest (Path): The destination path where the file will be saved.
     """
+    if not dest.parent.exists():
+        os.makedirs(dest.parent, exist_ok=True)
+        logging.debug(f"Created directory {dest.parent} for downloading file.")
+
     if not dest.exists():
         gdown.download(url, output=str(dest), quiet=False)
         logging.debug(f"Downloaded {url} to {dest}")
@@ -53,13 +77,14 @@ def load_protein2embedding(
         Dict[str, np.ndarray]: A dictionary of protein embeddings.
     """
     if embeddings_path is None:
-        embeddings_path = Path(cachedir) / 'uniprot2embedding.h5'
+        embeddings_path = Path(get_cache_dir()) / 'uniprot2embedding.h5'
         if not embeddings_path.exists():
             os.makedirs(embeddings_path.parent, exist_ok=True)
             download_file(
                 url=config.uniprot2embedding_url,
                 dest=embeddings_path,
             )
+            logging.debug(f"Downloaded protein embeddings to: {embeddings_path}")
     protein2embedding = {}
     with h5py.File(embeddings_path, "r") as file:
         for sequence_id in file.keys():
@@ -81,13 +106,14 @@ def load_cell2embedding(
         Dict[str, np.ndarray]: A dictionary of cell line embeddings.
     """
     if embeddings_path is None:
-        embeddings_path = Path(cachedir) / 'cell2embedding.pkl'
+        embeddings_path = Path(get_cache_dir()) / 'cell2embedding.pkl'
         if not embeddings_path.exists():
             os.makedirs(embeddings_path.parent, exist_ok=True)
             download_file(
                 url=config.cell2embedding_url,
                 dest=embeddings_path,
             )
+            logging.debug(f"Downloaded protein embeddings to: {embeddings_path}")
     with open(embeddings_path, 'rb') as f:
         cell2embedding = pickle.load(f)
     return cell2embedding
@@ -100,8 +126,7 @@ def load_curated_dataset() -> pd.DataFrame:
     Returns:
         pd.DataFrame: The curated PROTAC dataset.
     """
-    
-    df_path = Path(cachedir) / 'PROTAC-Degradation-DB.csv'
+    df_path = Path(get_cache_dir()) / 'PROTAC-Degradation-DB.csv'
     if not df_path.exists():
         os.makedirs(df_path.parent, exist_ok=True)
         download_file(

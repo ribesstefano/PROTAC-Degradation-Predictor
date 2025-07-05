@@ -22,12 +22,12 @@ The package has been developed and tested on a Linux machine with Python 3.12.4.
 To install the package, open your terminal and please run the following commands:
 
 ```bash
-python -m venv venv
-source venv/bin/activate  # On Windows use `venv\Scripts\activate`
-pip install --upgrade pip
 git clone --branch=main --depth=1 https://github.com/ribesstefano/PROTAC-Degradation-Predictor.git
 cd PROTAC-Degradation-Predictor
-pip install .
+python -m venv venv
+source venv/bin/activate
+pip install --upgrade pip
+pip install -e .
 ```
 
 ## 🎯 Documentation and Usage

@@ -17,7 +17,7 @@ from protac_degradation_predictor.data_utils import (
     get_fingerprint,
     load_curated_dataset,
     download_file,
-    cachedir,
+    get_cache_dir,
 )
 from protac_degradation_predictor.pytorch_models import load_model
 from protac_degradation_predictor.config import config
@@ -27,20 +27,32 @@ def load_models(
     use_models_from_cv: bool = False,
     use_xgboost_models: bool = True,
     study_type: Literal['standard', 'similarity', 'target'] = 'standard',
-):
-    model_dir = Path(cachedir) / 'models'
+) -> Dict[Path, Union[torch.nn.Module, xgb.Booster]]:
+    """ Load the models from the cache directory.
+    
+    Args:
+        use_models_from_cv (bool): Whether to use the models from cross-validation.
+        use_xgboost_models (bool): Whether to use the XGBoost models.
+        study_type (str): Use models trained on the specified study. Options are 'standard', 'similarity', 'target'.
+
+    Returns:
+        Dict[Path, Union[torch.nn.Module, xgb.Booster]]: A dictionary of models. The keys are the paths to the models and the values are the loaded models.
+    """
+    model_dir = Path(get_cache_dir()) / 'models'
     if not model_dir.exists():
         download_file(
             url=config.models_url,
-            dest=Path(cachedir) / 'models.zip',
+            dest=Path(get_cache_dir()) / 'models.zip',
         )
 
         # Unzip the models directory from the zip file
-        with zipfile.ZipFile(Path(cachedir) / 'models.zip', 'r') as zip_ref:
+        with zipfile.ZipFile(Path(get_cache_dir()) / 'models.zip', 'r') as zip_ref:
             zip_ref.extractall(model_dir)
         
         # Remove the zip file after extraction
-        os.remove(Path(cachedir) / 'models.zip')
+        os.remove(Path(get_cache_dir()) / 'models.zip')
+        
+        logging.debug(f"Downloaded and extracted models to: {model_dir}")
         
     # List all models in the model_dir directory
     model_filenames = [f for f in os.listdir(model_dir) if os.path.isfile(os.path.join(model_dir, f))]
@@ -102,34 +114,16 @@ def get_protac_active_proba(
         if not all(isinstance(i, list) for i in model_inputs):
             raise ValueError("All model inputs must be lists if one of the inputs is a list.")
 
-    # Load all required models in pkg_resources
+    # Load all required models
     device = torch.device(device)
-    models = {}
-    
+
+    protein2embedding = load_protein2embedding()
+    cell2embedding = load_cell2embedding()
     models = load_models(
         use_models_from_cv=use_models_from_cv,
         study_type=study_type,
         use_xgboost_models=use_xgboost_models,
     )
-
-    # model_to_load = 'best_model' if not use_models_from_cv else 'cv_model'
-    # for model_filename in pkg_resources.resource_listdir(__name__, 'models'):
-    #     if model_to_load not in model_filename:
-    #         continue
-    #     if study_type not in model_filename:
-    #         continue
-    #     if not use_xgboost_models:
-    #         if 'xgboost' not in model_filename:
-    #             ckpt_path = pkg_resources.resource_filename(__name__, f'models/{model_filename}')
-    #             models[ckpt_path] = load_model(ckpt_path).to(device)
-    #     else:
-    #         if 'xgboost' in model_filename:
-    #             json_path = pkg_resources.resource_filename(__name__, f'models/{model_filename}')
-    #             models[json_path] = xgb.Booster()
-    #             models[json_path].load_model(json_path)
-
-    protein2embedding = load_protein2embedding()
-    cell2embedding = load_cell2embedding()
 
     # Get the dimension of the embeddings from the first np.array in the dictionary
     protein_embedding_size = next(iter(protein2embedding.values())).shape[0]
@@ -353,8 +347,8 @@ def get_protac_embedding(
 
     # Load all required models in pkg_resources
     device = torch.device(device)
-    models = {}
-    
+    protein2embedding = load_protein2embedding()
+    cell2embedding = load_cell2embedding()
     models = load_models(
         use_models_from_cv=use_models_from_cv,
         study_type=study_type,
@@ -370,9 +364,6 @@ def get_protac_embedding(
     #     if 'xgboost' not in model_filename:
     #         ckpt_path = pkg_resources.resource_filename(__name__, f'models/{model_filename}')
     #         models[ckpt_path] = load_model(ckpt_path).to(device)
-
-    protein2embedding = load_protein2embedding()
-    cell2embedding = load_cell2embedding()
 
     # Get the dimension of the embeddings from the first np.array in the dictionary
     protein_embedding_size = next(iter(protein2embedding.values())).shape[0]

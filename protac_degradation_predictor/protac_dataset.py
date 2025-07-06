@@ -232,7 +232,7 @@ class PROTAC_Dataset(Dataset):
                 np.array(self.data['Uniprot'].tolist()),
                 np.array(self.data['E3 Ligase Uniprot'].tolist()),
                 np.array(self.data['Cell Line Identifier'].tolist()),
-            ]).copy()
+            ]).astype(np.float32).copy()
         y = self.data[self.active_label].values.copy()
         return X, y
 

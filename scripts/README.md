@@ -24,7 +24,36 @@ The column `<active_label>` is set _"Active"_ as default in the `PROTAC_Dataset`
 
 ## Training on Custom Data
 
-For training on custom datasets, please refer to the function `hyperparameter_tuning_and_training` in [`optuna_utils.py`](../protac_degradation_predictor/optuna_utils.py) and the file [`run_experiments.py`](../scripts/run_experiments.py) for inspiration on how to use the function.
+For training on custom datasets, please refer to the file [`train_on_custom_data.py`](../scripts/train_on_custom_data.py). This script allows one to train a model on a custom dataset by specifying the dataset file, the model parameters, and the training configuration.
+
+An minimal example of running the script is as follows:
+
+```bash
+python scripts/train_on_custom_data.py \
+    --train_df=path/to/custom/train/dataset.csv \
+    --val_df=path/to/custom/validation/dataset.csv \
+```
+
+For finetuning a pre-trained model, one can specify the `--finetuning_checkpoint` argument with the path to the checkpoint file:
+
+```bash
+python scripts/train_on_custom_data.py \
+    --train_df=path/to/custom/train/dataset.csv \
+    --val_df=path/to/custom/validation/dataset.csv \
+    --finetuning_checkpoint=path/to/pretrained/model.ckpt
+```
+
+**NOTE**: When finetuning, architecture hyperparameters such as the hidden layer size (`hidden_dim`) and dropout rate (`dropout`), will be taken from the checkpoint file. However, one can still override other hyperparameters such as the `learning_rate`, `batch_size`, and AdamW optimization parameters (_i.e._, `eps`, `beta1`, `beta2`).
+
+For a full list of options, run the script with the `--help` flag:
+
+```bash
+python scripts/train_on_custom_data.py --help
+```
+
+### Hyperparameter Tuning and Training
+
+For running hyperparameters optimization, please refer to the function `hyperparameter_tuning_and_training` in [`optuna_utils.py`](../protac_degradation_predictor/optuna_utils.py) and the file [`run_experiments.py`](../scripts/run_experiments.py) for inspiration on how to use the function.
 
 An example of skeleton implementation is as follows:
 

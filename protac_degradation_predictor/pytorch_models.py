@@ -489,11 +489,13 @@ def train_model(
         use_logger: bool = True,
         logger_save_dir: str = '../logs',
         logger_name: str = 'protac',
+        logger_version: str = 'v0',
         enable_checkpointing: bool = False,
         checkpoint_model_name: str = 'protac',
         disabled_embeddings: List[Literal['smiles', 'poi', 'e3', 'cell']] = [],
         return_predictions: bool = False,
         shuffle_embedding_prob: float = 0.0,
+        model: Optional[PROTAC_Model] = None,
         use_smote: bool = False,
 ) -> tuple:
     """ Train a PROTAC model using the given datasets and hyperparameters.
@@ -549,13 +551,13 @@ def train_model(
     loggers = [
         pl.loggers.TensorBoardLogger(
             save_dir=logger_save_dir,
-            version=logger_name,
             name=logger_name,
+            version=logger_version,
         ),
         pl.loggers.CSVLogger(
             save_dir=logger_save_dir,
-            version=logger_name,
             name=logger_name,
+            version=logger_version,
         ),
     ]
     callbacks = [
@@ -603,34 +605,46 @@ def train_model(
         enable_model_summary=False,
         enable_checkpointing=enable_checkpointing,
         enable_progress_bar=False,
-        devices=1,
+        precision=16 if torch.cuda.is_available() else 32,
+        accelerator='gpu' if torch.cuda.is_available() else 'cpu',
         num_nodes=1,
     )
     extra_optim_params = {
         'betas': (beta1, beta2),
         'eps': eps,
     }
-    model = PROTAC_Model(
-        hidden_dim=hidden_dim,
-        smiles_emb_dim=smiles_emb_dim,
-        poi_emb_dim=poi_emb_dim,
-        e3_emb_dim=e3_emb_dim,
-        cell_emb_dim=cell_emb_dim,
-        batch_size=batch_size,
-        join_embeddings=join_embeddings,
-        dropout=dropout,
-        use_batch_norm=use_batch_norm,
-        learning_rate=learning_rate,
-        apply_scaling=apply_scaling,
-        train_dataset=train_ds,
-        val_dataset=val_ds,
-        test_dataset=test_ds if test_df is not None else None,
-        disabled_embeddings=disabled_embeddings,
-        extra_optim_params=extra_optim_params,
-    )
+    if model is None:
+        model = PROTAC_Model(
+            hidden_dim=hidden_dim,
+            smiles_emb_dim=smiles_emb_dim,
+            poi_emb_dim=poi_emb_dim,
+            e3_emb_dim=e3_emb_dim,
+            cell_emb_dim=cell_emb_dim,
+            batch_size=batch_size,
+            join_embeddings=join_embeddings,
+            dropout=dropout,
+            use_batch_norm=use_batch_norm,
+            learning_rate=learning_rate,
+            apply_scaling=apply_scaling,
+            train_dataset=train_ds,
+            val_dataset=val_ds,
+            test_dataset=test_ds if test_df is not None else None,
+            disabled_embeddings=disabled_embeddings,
+            extra_optim_params=extra_optim_params,
+        )
+    else:
+        # If the model is already defined, we need to set the datasets
+        model.train_dataset = train_ds
+        model.val_dataset = val_ds
+        model.test_dataset = test_ds if test_df is not None else None
+        model.batch_size = batch_size
+        model.learning_rate = learning_rate
+        model.extra_optim_params = extra_optim_params
+
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         trainer.fit(model)
+
     metrics = {}
     # Add train metrics
     train_metrics = {m: v.item() for m, v in trainer.callback_metrics.items() if 'train' in m}

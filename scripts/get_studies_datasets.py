@@ -1,5 +1,6 @@
 import os
 import sys
+import argparse
 from typing import Dict
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -353,10 +354,13 @@ def remove_duplicates(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def main(
-    active_col: str = 'Active (Dmax 0.6, pDC50 6.0)',
+    active_col: str = 'Active', # (Dmax 0.6, pDC50 6.0)',
     test_split: float = 0.1,
     studies: str | Literal['all', 'standard', 'e3_ligase', 'similarity', 'target'] = 'all',
     cv_n_splits: int = 5,
+    data_dir: str = './data/studies',
+    Dmax_threshold: float = 0.6,
+    pDC50_threshold: float = 6.0,
 ):
     """ Get and save the datasets for the different studies.
     
@@ -366,16 +370,71 @@ def main(
         studies (str): The type of studies to save dataset for. Options: 'all', 'standard', 'e3_ligase', 'similarity', 'target'.
     """
     pl.seed_everything(42)
+    
+    parser = argparse.ArgumentParser(description="Get and save the datasets for the different studies.")
+    parser.add_argument(
+        "--active_col",
+        type=str,
+        default=active_col,
+        help="The column containing the active/inactive information. It should be in the format 'Active (Dmax N, pDC50 M)', where N and M are the thresholds float values for Dmax and pDC50, respectively.",
+    )
+    parser.add_argument(
+        "--test_split",
+        type=float,
+        default=test_split,
+        help="The percentage of the active PROTACs to use as the test set.",
+    )
+    parser.add_argument(
+        "--studies",
+        type=str,
+        default=studies,
+        choices=['all', 'standard', 'e3_ligase', 'similarity', 'target'],
+        help="The type of studies to save dataset for. Options: 'all', 'standard', 'e3_ligase', 'similarity', 'target'.",
+    )
+    parser.add_argument(
+        "--cv_n_splits",
+        type=int,
+        default=cv_n_splits,
+        help="The number of splits for cross-validation.",
+    )
+    parser.add_argument(
+        "--data_dir",
+        type=str,
+        default=data_dir,
+        help="The directory to save the datasets.",
+    )
+    parser.add_argument(
+        "--Dmax_threshold",
+        type=float,
+        default=Dmax_threshold,
+        help="The threshold for Dmax to consider a PROTAC as active.",
+    )
+    parser.add_argument(
+        "--pDC50_threshold",
+        type=float,
+        default=pDC50_threshold,
+        help="The threshold for pDC50 to consider a PROTAC as active.",
+    )
+    args = parser.parse_args()
+    active_col = args.active_col
+    test_split = args.test_split
+    studies = args.studies
+    cv_n_splits = args.cv_n_splits
+    data_dir = args.data_dir
+    Dmax_threshold = args.Dmax_threshold
+    pDC50_threshold = args.pDC50_threshold
 
     # Set the Column to Predict
     active_name = active_col.replace(' ', '_').replace('(', '').replace(')', '').replace(',', '')
 
     # Get Dmax_threshold from the active_col
-    Dmax_threshold = float(active_col.split('Dmax')[1].split(',')[0].strip('(').strip(')').strip())
-    pDC50_threshold = float(active_col.split('pDC50')[1].strip('(').strip(')').strip())
+    if 'Dmax' in active_col and 'pDC50' in active_col:
+        Dmax_threshold = float(active_col.split('Dmax')[1].split(',')[0].strip('(').strip(')').strip())
+        pDC50_threshold = float(active_col.split('pDC50')[1].strip('(').strip(')').strip())
 
     # Load the PROTAC dataset
-    protac_df = pd.read_csv('../data/PROTAC-Degradation-DB.csv')
+    protac_df = pdp.load_curated_dataset()
+    
     # Map E3 Ligase Iap to IAP
     protac_df['E3 Ligase'] = protac_df['E3 Ligase'].str.replace('Iap', 'IAP')
 
@@ -412,27 +471,29 @@ def main(
     #     test_indeces['e3_ligase'] = get_e3_ligase_split_indices(active_df)
 
     # Make directory for studies datasets if it does not exist
-    data_dir = '../data/studies'
     if not os.path.exists(data_dir):
         os.makedirs(data_dir)
 
     # Open file for reporting
-    for split_type, indeces in test_indeces.items():
-        test_df = active_df.loc[indeces].copy()
-        train_val_df = active_df[~active_df.index.isin(test_df.index)].copy()
+    with open(f'{data_dir}/report_datasets.md', 'w') as f:
+        for split_type, indeces in test_indeces.items():
+            test_df = active_df.loc[indeces].copy()
+            train_val_df = active_df[~active_df.index.isin(test_df.index)].copy()
 
-        # Save the datasets
-        train_val_perc = f'{int((1 - test_split) * 100)}'
-        test_perc = f'{int(test_split * 100)}'
+            # Save the datasets
+            train_val_perc = f'{int((1 - test_split) * 100)}'
+            test_perc = f'{int(test_split * 100)}'
 
-        train_val_filename = f'{data_dir}/{split_type}_train_val_{train_val_perc}split_{active_name}.csv'
-        test_filename = f'{data_dir}/{split_type}_test_{test_perc}split_{active_name}.csv'
+            train_val_filename = f'{data_dir}/{split_type}_train_val_{train_val_perc}split_{active_name}.csv'
+            test_filename = f'{data_dir}/{split_type}_test_{test_perc}split_{active_name}.csv'
 
-        train_val_df.to_csv(train_val_filename, index=False)
-        test_df.to_csv(test_filename, index=False)
-
-        # Report statistics of the cross-validation training datasets
-        with open(f'{data_dir}/report_datasets.md', 'w') as f:
+            train_val_df.to_csv(train_val_filename, index=False)
+            test_df.to_csv(test_filename, index=False)
+            
+            print(f'Saved {split_type} train/val dataset to: {train_val_filename}')
+            print(f'Saved {split_type} test dataset to: {test_filename}')
+                
+            # Report statistics of the cross-validation training datasets
             # Print statistics on active/inactive percentages
             perc_active = train_val_df[active_col].sum() / len(train_val_df)
             print('-' * 80)
@@ -473,10 +534,18 @@ def main(
             f.write('\n\n')
             print('-' * 80)
 
-    # Regression datasets
+    print(f'Wrote statistics to {data_dir}/report_datasets.md')
+    print('-' * 80)
+    print('All datasets have been saved successfully!')
+    return
 
+    # ==========================================================================
+    # Regression datasets
+    # TODO: Not fully tested yet.
+    # ==========================================================================
     # Load the PROTAC dataset
-    protac_df = pd.read_csv('../data/PROTAC-Degradation-DB.csv')
+    protac_df = pdp.load_curated_dataset()
+    
     # Map E3 Ligase Iap to IAP
     protac_df['E3 Ligase'] = protac_df['E3 Ligase'].str.replace('Iap', 'IAP')
 

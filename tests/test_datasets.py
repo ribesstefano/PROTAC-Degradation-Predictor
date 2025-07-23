@@ -17,23 +17,28 @@ def test_mol_poi_e3_cell_dataset():
         "cell": ["hela", "RS4; 11", "ramos"],
         "label_bin": [0, 1, 0],
         "label_reg": [0.1, None, 0.3],
-        "label_multiclass": ["class1", "class2", "class1"],
+        "label_multiclass": [0, 1, 2],
     }
     df = pd.DataFrame(data)
 
     # Create an instance of MolPoiE3CellDataset
+    label_columns = ["label_bin", "label_reg", "label_multiclass"]
+    num_labels = len(label_columns)
+    num_data = len(df)
+
     ds = MolPoiE3CellDataset(
         df=df,
         mol_column="mol",
         poi_column="poi",
         e3_column="e3",
         cell_column="cell",
-        label_columns=["label_bin", "label_reg", "label_multiclass"],
+        label_columns=label_columns,
+        imputer="simpler",
         save_embeddings_to_cache=False,
     )
 
     # Check the length of the dataset
-    assert len(ds) == 3, "Dataset length should be 3"
+    assert len(ds) == num_data, f"Dataset length should be {num_data}, got {len(ds)}"
 
     # Check the first item in the dataset
     item = ds[0]
@@ -45,3 +50,22 @@ def test_mol_poi_e3_cell_dataset():
     assert "label_bin" in item, f"Item should contain 'label_bin' key: {item.keys()}"
     assert "label_reg" in item, f"Item should contain 'label_reg' key: {item.keys()}"
     assert "label_multiclass" in item, f"Item should contain 'label_multiclass' key: {item.keys()}"
+
+    # Get the numpy arrays
+    X, y = ds.to_numpy()
+
+    # Calculate the expected shape
+    mol_shape = ds.embeddings["mol"].shape()[-1]
+    poi_shape = ds.embeddings["prot"].shape()[-1]
+    e3_shape = ds.embeddings["prot"].shape()[-1]
+    cell_shape = ds.embeddings["cell"].shape()[-1]
+
+    expected_shape = (num_data, mol_shape + poi_shape + e3_shape + cell_shape)
+
+    assert isinstance(y, np.ndarray), "y should be a numpy array"
+    assert isinstance(X, np.ndarray), "X should be a numpy array"
+    assert y.shape == (num_data, num_labels), f"y shape should be ({num_data}, {num_labels}), got {y.shape}"
+    assert X.shape == expected_shape, f"X shape should be {expected_shape}, got {X.shape}"
+
+    # Check that no NaN values are present in y
+    assert not np.isnan(y).any(), "y should not contain NaN values"

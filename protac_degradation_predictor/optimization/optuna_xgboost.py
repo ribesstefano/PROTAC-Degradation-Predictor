@@ -112,6 +112,7 @@ def xgboost_objective(
     dataset_kwargs.update({
         "mol_embeddings_kwargs": {
             "filename": f"mol_embeddings_type={mol_encoding_type}_fp={mol_fp_size}_r={mol_radius}.npz",
+            "load_from_cache": True,
         },
         "mol_embeddings_encode_kwargs": {
             "embeddings_type": mol_encoding_type,
@@ -121,6 +122,7 @@ def xgboost_objective(
         "protein_embeddings_kwargs": {
             "count_vect_kwargs": count_vect_kwargs,
             "filename": f"prot_embeddings_type={prot_encoding_type}.npz",
+            "load_from_cache": True,
         },
         "protein_embeddings_encode_kwargs": {
             "embeddings_type": prot_encoding_type,
@@ -128,6 +130,7 @@ def xgboost_objective(
         "cell_embeddings_kwargs": {
             "onehot_enc_kwargs": onehot_enc_kwargs,
             "filename": f"cell_embeddings_type={cell_encoding_type}.npz",
+            "load_from_cache": True,
         },
         "cell_embeddings_encode_kwargs": {
             "embeddings_type": cell_encoding_type,
@@ -188,7 +191,7 @@ def xgboost_objective(
         # Save only the best model to a proper location
         if model_name is not None and log_dir is not None:
             os.makedirs(log_dir, exist_ok=True)
-            model_path = os.path.join(log_dir, f"{model_name}_best.joblib")
+            model_path = os.path.join(log_dir, f"{model_name}.joblib")
             model.save(model_path)
             logging.info(f"Best XGBoost model saved to: {model_path}")
     else:
@@ -202,20 +205,20 @@ def xgboost_objective(
             stats.update(metrics)
             report.append(stats.copy())
             val_preds.append(preds["val_pred"])
-        # Save only the best model from the last fold
-        if model_name:
-            save_dir = log_dir or "xgboost_models"
-            os.makedirs(save_dir, exist_ok=True)
-            model_path = os.path.join(save_dir, f"{model_name}_best.joblib")
-            model.save(model_path)
-            logging.info(f"Best XGBoost model saved to: {model_path}")
+            # Save the model for each fold if model_name is provided
+            if model_name is not None and log_dir is not None:
+                os.makedirs(log_dir, exist_ok=True)
+                filename = f"{model_name}_fold={k+1}.joblib"
+                model_path = os.path.join(log_dir, filename)
+                model.save(model_path)
+                logging.info(f"XGBoost model for fold N.{k+1} saved to: {model_path}")
 
     # Log results to files
-    log_dir = log_dir or "xgboost_logs"
-    os.makedirs(log_dir, exist_ok=True)
-    pd.DataFrame(report).to_csv(os.path.join(log_dir, f"{model_name}_cv_report.csv"), index=False)
-    pd.DataFrame([xgb_params]).to_csv(os.path.join(log_dir, f"{model_name}_hparams.csv"), index=False)
-    logging.info(f"Reports and hyperparameters saved to {log_dir}")
+    if log_dir:
+        os.makedirs(log_dir, exist_ok=True)
+        pd.DataFrame(report).to_csv(os.path.join(log_dir, f"{model_name}_cv_report.csv"), index=False)
+        pd.DataFrame([xgb_params]).to_csv(os.path.join(log_dir, f"{model_name}_hparams.csv"), index=False)
+        logging.info(f"Reports and hyperparameters saved to {log_dir}")
 
     trial.set_user_attr("report", report)
     trial.set_user_attr("val_preds", val_preds)

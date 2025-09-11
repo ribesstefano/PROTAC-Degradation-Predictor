@@ -31,6 +31,8 @@ from protac_degradation_predictor.protac_degradation_predictor import (
     is_protac_active,
     get_protac_embedding,
 )
+from protac_degradation_predictor import data
+from protac_degradation_predictor import models
 
 __version__ = "1.0.2"
 __author__ = "Stefano Ribes"
